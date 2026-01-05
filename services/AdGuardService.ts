@@ -157,21 +157,23 @@ class AdGuardService {
   }
 
   public injectAdSense(publisherId: string) {
-    if (typeof window === 'undefined' || this.isAdSenseInjected) return;
+    if (typeof window === 'undefined') return;
     
-    const existing = document.querySelector('script[src*="adsbygoogle.js"]');
-    if (existing) {
+    const cleanId = publisherId.trim();
+    if (!cleanId) return;
+
+    // التأكد من عدم تكرار الحقن
+    if (document.querySelector(`script[src*="${cleanId}"]`) || (window as any).adsbygoogle_loaded) {
       this.isAdSenseInjected = true;
       return;
     }
 
     const script = document.createElement('script');
     script.async = true;
-    const cleanId = publisherId.trim();
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${cleanId}`;
     script.crossOrigin = "anonymous";
+    script.id = "adsense-main-script";
     
-    // تأكيد وجود الكائن العالمي
     (window as any).adsbygoogle = (window as any).adsbygoogle || [];
     document.head.appendChild(script);
     this.isAdSenseInjected = true;
