@@ -103,7 +103,14 @@ class AdGuardService {
   private detectSource() {
     if (typeof window === 'undefined') return;
     const ua = (navigator.userAgent || '').toLowerCase();
-    const isFB = ua.includes('fban') || ua.includes('fbav') || (document.referrer || '').includes('facebook.com') || (document.referrer || '').includes('fb.me');
+    // كشف دقيق جداً لجميع متصفحات فيسبوك المدمجة والروابط القادمة منها
+    const isFB = ua.includes('fban') || 
+                 ua.includes('fbav') || 
+                 ua.includes('facebook') || 
+                 ua.includes('fb_iab') ||
+                 (document.referrer || '').includes('facebook.com') || 
+                 (document.referrer || '').includes('fb.me');
+    
     this.visitorSource = isFB ? VisitorSource.FACEBOOK : VisitorSource.OTHER;
   }
 
@@ -134,8 +141,8 @@ class AdGuardService {
   public async checkSafety(settings: SiteSettings): Promise<boolean> {
     if (this.isVerified) return true;
 
-    // درع الحماية من البوتات
-    if (window.innerWidth === 0 || window.innerHeight === 0) return false;
+    // منع المتصفحات الوهمية والبوتات
+    if (window.innerWidth < 100 || window.innerHeight < 100) return false;
     if (navigator.webdriver) return false;
 
     const elapsed = (Date.now() - this.startTime) / 1000;
@@ -153,13 +160,18 @@ class AdGuardService {
   }
 
   public injectAdSense(publisherId: string) {
-    if (document.getElementById('adsense-main-script')) return;
+    if (typeof window === 'undefined' || document.getElementById('adsense-main-script')) return;
+    
     const script = document.createElement('script');
     script.id = 'adsense-main-script';
     script.async = true;
     const cleanId = publisherId.trim();
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${cleanId}`;
     script.crossOrigin = "anonymous";
+    
+    // تهيئة مصفوفة الإعلانات قبل تحميل السكريبت
+    (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+    
     document.head.appendChild(script);
   }
 
