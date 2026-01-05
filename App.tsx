@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { NewsItem, SiteSettings } from './types';
 import { NewsCard } from './components/NewsCard';
@@ -89,7 +88,7 @@ const App: React.FC = () => {
 
     if (!settings) return (
       <div className="min-h-[60vh] flex flex-col items-center justify-center gap-4 text-center p-4">
-        <h2 className="text-xl font-black text-gray-900">فشل الاتصال بقاعدة البيانات</h2>
+        <h2 className="text-xl font-black text-gray-900">جاري الاتصال بقاعدة البيانات...</h2>
         <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black">إعادة تحميل</button>
       </div>
     );
@@ -138,7 +137,7 @@ const App: React.FC = () => {
           </div>
           
           <aside className="space-y-12">
-            <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-50">
+            <div className="bg-white p-10 rounded-[40px] shadow-sm border border-gray-100">
               <h4 className="font-black border-r-4 border-blue-600 pr-4 mb-10 text-xl text-gray-900 text-right">الأكثر قراءة</h4>
               <ul className="space-y-8">
                 {articles.slice(0, 5).map((art, i) => (
@@ -171,7 +170,7 @@ const App: React.FC = () => {
             <nav className="hidden lg:flex gap-10 text-[11px] font-black uppercase text-gray-400">
               <button onClick={() => navigate('/')} className={`transition-colors hover:text-blue-600 ${path === '/' ? 'text-blue-600' : ''}`}>الرئيسية</button>
               {settings?.categories?.slice(0, 5).map(cat => (
-                <a key={cat} href="#" onClick={(e) => e.preventDefault()} className="hover:text-gray-900 transition-colors">{cat}</a>
+                <a key={cat} href="#" onClick={(e) => {e.preventDefault();}} className="hover:text-gray-900 transition-colors">{cat}</a>
               ))}
             </nav>
 
