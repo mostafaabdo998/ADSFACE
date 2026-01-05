@@ -90,7 +90,8 @@ const App: React.FC = () => {
 
     return (
       <main className="max-w-6xl mx-auto px-4 mt-8 md:mt-12 animate-in fade-in duration-1000" dir="rtl">
-        <AdSlot placementId="pos_top" />
+        {/* إعلان الهيدر */}
+        <AdSlot placementId="pos_top" currentPath={path} />
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 md:gap-12 mt-6">
           <div className="lg:col-span-2 space-y-8 md:space-y-12">
@@ -126,7 +127,8 @@ const App: React.FC = () => {
                 ))}
               </ul>
             </div>
-            <AdSlot placementId="pos_sidebar_main" />
+            {/* إعلان الشريط الجانبي */}
+            <AdSlot placementId="pos_sidebar_main" currentPath={path} />
           </aside>
         </div>
       </main>

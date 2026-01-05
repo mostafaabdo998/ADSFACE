@@ -9,6 +9,8 @@ interface ArticlePageProps {
 }
 
 export const ArticlePage: React.FC<ArticlePageProps> = ({ item, onBack }) => {
+  const currentPath = window.location.pathname;
+
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [item.id]);
@@ -26,24 +28,24 @@ export const ArticlePage: React.FC<ArticlePageProps> = ({ item, onBack }) => {
           dangerouslySetInnerHTML={{ __html: paragraphs[0] + '</p>' }} 
         />
 
-        <AdSlot placementId="pos_after_title" />
+        {/* إعلان تحت العنوان مباشرة */}
+        <AdSlot placementId="pos_after_title" currentPath={currentPath} />
 
         <div className="prose prose-sm md:prose-lg max-w-none text-gray-800 leading-[1.8] md:leading-[2] text-right font-medium">
-          {/* الجزء الأول */}
           {paragraphs.slice(1, partSize).map((p, i) => (
             <div key={`p1-${i}`} className="mb-6" dangerouslySetInnerHTML={{ __html: p + '</p>' }} />
           ))}
           
-          <AdSlot placementId="pos_mid_1" />
+          {/* إعلان منتصف المقال 1 */}
+          <AdSlot placementId="pos_mid_1" currentPath={currentPath} />
 
-          {/* الجزء الثاني */}
           {paragraphs.slice(partSize, partSize * 2).map((p, i) => (
             <div key={`p2-${i}`} className="mb-6" dangerouslySetInnerHTML={{ __html: p + '</p>' }} />
           ))}
 
-          <AdSlot placementId="pos_mid_2" />
+          {/* إعلان منتصف المقال 2 */}
+          <AdSlot placementId="pos_mid_2" currentPath={currentPath} />
 
-          {/* الجزء الثالث */}
           {paragraphs.slice(partSize * 2).map((p, i) => (
             <div key={`p3-${i}`} className="mb-6" dangerouslySetInnerHTML={{ __html: p + '</p>' }} />
           ))}
@@ -83,7 +85,8 @@ export const ArticlePage: React.FC<ArticlePageProps> = ({ item, onBack }) => {
         <div className="max-w-3xl mx-auto">
           {renderRichContent()}
 
-          <AdSlot placementId="pos_bottom" />
+          {/* إعلان نهاية المقال */}
+          <AdSlot placementId="pos_bottom" currentPath={currentPath} />
 
           {item.videoEmbed && (
             <div className="video-container my-10 rounded-3xl md:rounded-[40px] overflow-hidden shadow-2xl border-4 md:border-[10px] border-white aspect-video bg-black" dangerouslySetInnerHTML={{ __html: item.videoEmbed }} />

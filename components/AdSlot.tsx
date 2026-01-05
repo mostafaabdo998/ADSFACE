@@ -4,14 +4,22 @@ import { adGuard } from '../services/AdGuardService';
 import { SiteSettings } from '../types';
 
 interface AdSlotProps {
-  placementId: string; 
+  placementId: string;
+  currentPath?: string; // مضاف لتتبع تغيير الصفحة
 }
 
-export const AdSlot: React.FC<AdSlotProps> = ({ placementId }) => {
+export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [isSafe, setIsSafe] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const pushedRef = useRef(false);
+  const initialized = useRef(false);
+
+  // إعادة ضبط الحالة عند تغيير الصفحة لضمان إعادة الفحص والحقن
+  useEffect(() => {
+    setIsSafe(false);
+    initialized.current = false;
+    if (containerRef.current) containerRef.current.innerHTML = '';
+  }, [currentPath]);
 
   useEffect(() => {
     let active = true;
@@ -22,9 +30,8 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId }) => {
   }, []);
 
   useEffect(() => {
-    if (!settings) return;
+    if (!settings || isSafe) return;
 
-    // محرك التحقق من الأمان - صمام الأمان ضد تقييد أدسنس
     const safetyInterval = setInterval(async () => {
       const safe = await adGuard.checkSafety(settings);
       if (safe) {
@@ -37,20 +44,20 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId }) => {
     }, 1000);
 
     return () => clearInterval(safetyInterval);
-  }, [settings]);
+  }, [settings, isSafe, currentPath]);
 
   useEffect(() => {
-    if (isSafe && settings && !pushedRef.current) {
-      // الانتظار حتى استقرار الصفحة تماماً قبل الرندر
-      const renderTimer = setTimeout(() => {
-        renderAdLogic();
-      }, 500); 
-      return () => clearTimeout(renderTimer);
+    if (isSafe && settings && !initialized.current) {
+      initialized.current = true;
+      // نستخدم التوقيت لضمان استقرار المتصفح قبل الحقن
+      requestAnimationFrame(() => {
+        setTimeout(renderAd, 200);
+      });
     }
-  }, [isSafe, settings]);
+  }, [isSafe, settings, currentPath]);
 
-  const renderAdLogic = () => {
-    if (!containerRef.current || !settings || pushedRef.current) return;
+  const renderAd = () => {
+    if (!containerRef.current || !settings) return;
 
     const placement = settings.customAdPlacements?.find(p => p.id === placementId);
     if (!placement || !placement.isActive || !placement.code?.trim()) return;
@@ -58,26 +65,26 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId }) => {
     const currentContainer = containerRef.current;
     currentContainer.innerHTML = ''; 
 
-    // حقن الكود الفعلي للإعلان
     const adWrapper = document.createElement('div');
     adWrapper.className = "ad-inner-wrapper w-full flex justify-center";
     adWrapper.innerHTML = placement.code;
     currentContainer.appendChild(adWrapper);
 
-    // تفعيل وحدات AdSense
     if (placement.code.includes('adsbygoogle')) {
       try {
-        const adsbygoogle = (window as any).adsbygoogle || [];
-        adsbygoogle.push({});
-        pushedRef.current = true;
+        // تأخير بسيط للتأكد من وجود ins tag في الـ DOM
+        setTimeout(() => {
+          const adsbygoogle = (window as any).adsbygoogle || [];
+          adsbygoogle.push({});
+        }, 150);
       } catch (e) {
-        console.warn("AdSense push delayed or failed", placementId);
+        console.warn("AdSense push issue on", placementId);
       }
     }
   };
 
   return (
-    <div className={`ad-slot-container w-full flex justify-center transition-all duration-1000 ${isSafe ? 'opacity-100 py-4 md:py-8 min-h-[50px]' : 'opacity-0 h-0 overflow-hidden'}`}>
+    <div className={`ad-slot-wrapper w-full flex justify-center transition-opacity duration-1000 ${isSafe ? 'opacity-100 py-4 md:py-8 min-h-[100px]' : 'opacity-0 h-0 overflow-hidden'}`}>
       <div ref={containerRef} className="w-full flex justify-center items-center overflow-hidden" />
     </div>
   );
