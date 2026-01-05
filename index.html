@@ -13,17 +13,22 @@
         background-color: #fcfcfd;
         scroll-behavior: smooth;
       }
-      /* تنسيقات أدسنس العالمية لضمان عدم حدوث مشاكل في العرض */
+      /* ضمان وجود عرض دائم للحاويات */
+      .ad-slot-boundary, .adsense-inject-point, .adsense-wrapper {
+        width: 100% !important;
+        min-width: 100% !important;
+        display: block !important;
+      }
       .adsbygoogle {
         display: block !important;
         margin: 0 auto !important;
         text-align: center !important;
+        min-width: 100px !important;
+        min-height: 50px !important;
       }
-      /* منع انهيار الحاويات أثناء التحميل */
       ins.adsbygoogle[data-ad-status="unfilled"] {
         display: none !important;
       }
-      /* تحسين تباعد المحتوى */
       .article-content p {
         margin-bottom: 1.5rem;
         line-height: 1.9;

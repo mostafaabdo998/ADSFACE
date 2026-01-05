@@ -13,11 +13,13 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isInjectedRef = useRef(false);
+  const checkWidthInterval = useRef<number | null>(null);
 
   // 1. إعادة الضبط عند تغيير المسار
   useEffect(() => {
     setIsSafe(false);
     isInjectedRef.current = false;
+    if (checkWidthInterval.current) window.clearInterval(checkWidthInterval.current);
     if (containerRef.current) containerRef.current.innerHTML = '';
   }, [currentPath]);
 
@@ -30,83 +32,96 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     return () => { active = false; };
   }, []);
 
-  // 3. نظام فحص الأمان (حماية فيسبوك)
+  // 3. صمام الأمان (حماية فيسبوك)
   useEffect(() => {
     if (!settings || isSafe) return;
 
-    const safetyInterval = setInterval(async () => {
+    const safetyInterval = window.setInterval(async () => {
       const safe = await adGuard.checkSafety(settings);
       if (safe) {
         setIsSafe(true);
         if (settings.adClient) {
           adGuard.injectAdSense(settings.adClient);
         }
-        clearInterval(safetyInterval);
+        window.clearInterval(safetyInterval);
       }
     }, 1000);
 
-    return () => clearInterval(safetyInterval);
+    return () => window.clearInterval(safetyInterval);
   }, [settings, isSafe, currentPath]);
 
-  // 4. عملية الحقن الآمنة
+  // 4. محرك الحقن (المعالج للأخطاء)
   useEffect(() => {
     if (isSafe && settings && !isInjectedRef.current) {
-      // ننتظر حتى تكتمل عملية الـ DOM Update وتظهر الحاوية
-      const timer = setTimeout(() => {
-        handleAdRender();
-      }, 300);
-      return () => clearTimeout(timer);
+      // نبدأ بفحص العرض دورياً حتى يصبح > 0
+      checkWidthInterval.current = window.setInterval(() => {
+        if (containerRef.current && containerRef.current.clientWidth > 0) {
+          window.clearInterval(checkWidthInterval.current!);
+          handleAdRender();
+        }
+      }, 100);
     }
+    return () => {
+      if (checkWidthInterval.current) window.clearInterval(checkWidthInterval.current);
+    };
   }, [isSafe, settings, currentPath]);
 
   const handleAdRender = () => {
-    const currentContainer = containerRef.current;
-    if (!currentContainer || isInjectedRef.current) return;
-
-    // التحقق من وجود عرض متاح (حل مشكلة availableWidth=0)
-    if (currentContainer.offsetWidth <= 0) {
-      // إذا لم يظهر العرض بعد، نحاول مرة أخرى في الفريم القادم
-      requestAnimationFrame(handleAdRender);
-      return;
-    }
+    if (!containerRef.current || isInjectedRef.current) return;
 
     const placement = settings?.customAdPlacements?.find(p => p.id === placementId);
     if (!placement || !placement.isActive || !placement.code?.trim()) return;
 
-    // منع الحقن المزدوج
+    // قفل لمنع التكرار
     isInjectedRef.current = true;
+    
+    // تنظيف الحاوية
+    const currentContainer = containerRef.current;
     currentContainer.innerHTML = ''; 
 
-    // إنشاء حاوية فرعية
+    // إنشاء وحدة إعلانية جديدة تماماً
     const adWrapper = document.createElement('div');
-    adWrapper.className = "adsense-wrapper w-full flex justify-center overflow-hidden";
+    adWrapper.id = `ad-inner-${placementId}-${Math.random().toString(36).substr(2, 5)}`;
+    adWrapper.style.width = '100%';
+    adWrapper.style.minHeight = '100px';
+    adWrapper.style.display = 'block';
     adWrapper.innerHTML = placement.code;
+    
     currentContainer.appendChild(adWrapper);
 
-    // التحقق من وجود عنصر ins قبل عمل push
     const insTag = adWrapper.querySelector('ins.adsbygoogle');
-    if (insTag && !insTag.hasAttribute('data-adsbygoogle-status')) {
+    if (insTag) {
       try {
-        (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-        (window as any).adsbygoogle.push({});
+        // ننتظر 200ms إضافية للتأكد من أن أدسنس قرأ العرض بعد الحقن
+        setTimeout(() => {
+          if (!insTag.hasAttribute('data-adsbygoogle-status')) {
+            (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+            (window as any).adsbygoogle.push({});
+          }
+        }, 200);
       } catch (e) {
-        console.error("AdSense Push Error for:", placementId, e);
-        // في حال الخطأ، نعيد المحاولة لاحقاً
-        isInjectedRef.current = false;
+        console.warn("AdSense Push Error (Recovering...):", placementId);
+        isInjectedRef.current = false; // السماح بإعادة المحاولة في حال الفشل
       }
     }
   };
 
   return (
     <div 
-      className={`ad-slot-container w-full flex justify-center transition-all duration-500 ${
-        isSafe ? 'opacity-100 py-4 min-h-[100px]' : 'opacity-0 h-0 overflow-hidden'
-      }`}
-      style={{ display: isSafe ? 'flex' : 'none' }} // استخدام display block/flex لضمان حساب العرض
+      className={`ad-slot-boundary w-full flex justify-center transition-all duration-1000`}
+      style={{ 
+        // نستخدم opacity و visibility بدلاً من display none لتجنب availableWidth=0
+        opacity: isSafe ? 1 : 0,
+        visibility: isSafe ? 'visible' : 'hidden',
+        minHeight: isSafe ? '100px' : '0px',
+        height: isSafe ? 'auto' : '1px',
+        overflow: 'hidden',
+        margin: isSafe ? '1.5rem 0' : '0'
+      }}
     >
       <div 
         ref={containerRef} 
-        className="w-full flex justify-center items-center" 
+        className="w-full flex justify-center items-center overflow-hidden" 
         style={{ minWidth: '100%' }}
       />
     </div>
