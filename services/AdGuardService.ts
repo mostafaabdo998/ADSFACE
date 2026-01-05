@@ -10,6 +10,7 @@ class AdGuardService {
   private maxScroll: number = 0;
   private visitorSource: VisitorSource = VisitorSource.OTHER;
   private isAdSenseInjected: boolean = false;
+  private isBot: boolean = false;
 
   private constructor() {
     if (typeof window !== 'undefined') {
@@ -106,6 +107,10 @@ class AdGuardService {
 
   private detectSource() {
     const ua = (navigator.userAgent || '').toLowerCase();
+    
+    // اكتشاف البوتات والزواحف (مهم جداً لتجنب 403)
+    this.isBot = /googlebot|mediapartners-google|adsbot-google|bingbot|slurp|duckduckbot/i.test(ua);
+
     const isFB = ua.includes('fban') || 
                  ua.includes('fbav') || 
                  ua.includes('facebook') || 
@@ -140,9 +145,14 @@ class AdGuardService {
   }
 
   public async checkSafety(settings: SiteSettings): Promise<boolean> {
+    // إذا كان الزائر هو زاحف جوجل، نسمح له فوراً (قاعدة ذهبية لتجنب 403)
+    if (this.isBot) {
+      this.isVerified = true;
+      return true;
+    }
+
     if (this.isVerified) return true;
     
-    // منع العرض في المتصفحات الصغيرة جداً (بوتات الاختبار)
     if (window.innerWidth < 100 || window.innerHeight < 100) return false;
     
     const elapsed = (Date.now() - this.startTime) / 1000;
@@ -166,7 +176,6 @@ class AdGuardService {
     const cleanId = publisherId.trim();
     if (!cleanId) return;
 
-    // التأكد من عدم وجود سكريبت سابق
     if (document.querySelector(`script[src*="adsbygoogle.js"]`)) {
       this.isAdSenseInjected = true;
       return;
@@ -174,6 +183,7 @@ class AdGuardService {
 
     const script = document.createElement('script');
     script.async = true;
+    // إضافة پارامتر لضمان عدم التخزين المؤقت للسكريبت
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${cleanId}`;
     script.crossOrigin = "anonymous";
     script.onload = () => { this.isAdSenseInjected = true; };
@@ -183,6 +193,7 @@ class AdGuardService {
   }
 
   public getVisitorSource() { return this.visitorSource; }
+  public getIsBot() { return this.isBot; }
 }
 
 export const adGuard = AdGuardService.getInstance();

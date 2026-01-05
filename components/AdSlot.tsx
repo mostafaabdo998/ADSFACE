@@ -15,7 +15,6 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const isInjectedRef = useRef(false);
   const checkWidthInterval = useRef<number | null>(null);
 
-  // 1. إعادة الضبط عند تغيير المسار
   useEffect(() => {
     setIsSafe(false);
     isInjectedRef.current = false;
@@ -23,7 +22,6 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     if (containerRef.current) containerRef.current.innerHTML = '';
   }, [currentPath]);
 
-  // 2. تحميل الإعدادات
   useEffect(() => {
     let active = true;
     adGuard.getSettings().then(data => {
@@ -32,7 +30,6 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     return () => { active = false; };
   }, []);
 
-  // 3. صمام الأمان (حماية فيسبوك)
   useEffect(() => {
     if (!settings || isSafe) return;
 
@@ -45,21 +42,21 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
         }
         window.clearInterval(safetyInterval);
       }
-    }, 1000);
+    }, 800); // تسريع الفحص قليلاً
 
     return () => window.clearInterval(safetyInterval);
   }, [settings, isSafe, currentPath]);
 
-  // 4. محرك الحقن (المعالج للأخطاء)
   useEffect(() => {
     if (isSafe && settings && !isInjectedRef.current) {
-      // نبدأ بفحص العرض دورياً حتى يصبح > 0
+      // الانتظار حتى استقرار العرض (أهم خطوة)
       checkWidthInterval.current = window.setInterval(() => {
-        if (containerRef.current && containerRef.current.clientWidth > 0) {
+        const el = containerRef.current;
+        if (el && el.clientWidth > 100) { // التأكد من وجود عرض حقيقي وليس مجرد 1 بكسل
           window.clearInterval(checkWidthInterval.current!);
           handleAdRender();
         }
-      }, 100);
+      }, 150);
     }
     return () => {
       if (checkWidthInterval.current) window.clearInterval(checkWidthInterval.current);
@@ -72,56 +69,51 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     const placement = settings?.customAdPlacements?.find(p => p.id === placementId);
     if (!placement || !placement.isActive || !placement.code?.trim()) return;
 
-    // قفل لمنع التكرار
     isInjectedRef.current = true;
-    
-    // تنظيف الحاوية
     const currentContainer = containerRef.current;
     currentContainer.innerHTML = ''; 
 
-    // إنشاء وحدة إعلانية جديدة تماماً
+    // تغليف الكود بـ div يضمن الـ Layout
     const adWrapper = document.createElement('div');
-    adWrapper.id = `ad-inner-${placementId}-${Math.random().toString(36).substr(2, 5)}`;
-    adWrapper.style.width = '100%';
-    adWrapper.style.minHeight = '100px';
+    adWrapper.className = "adsense-inject-point w-full min-h-[100px]";
     adWrapper.style.display = 'block';
+    adWrapper.style.width = '100%';
     adWrapper.innerHTML = placement.code;
     
     currentContainer.appendChild(adWrapper);
 
     const insTag = adWrapper.querySelector('ins.adsbygoogle');
     if (insTag) {
+      // إجبار الـ ins على العرض قبل الـ push
+      (insTag as HTMLElement).style.display = 'block';
+      
       try {
-        // ننتظر 200ms إضافية للتأكد من أن أدسنس قرأ العرض بعد الحقن
         setTimeout(() => {
           if (!insTag.hasAttribute('data-adsbygoogle-status')) {
             (window as any).adsbygoogle = (window as any).adsbygoogle || [];
             (window as any).adsbygoogle.push({});
           }
-        }, 200);
+        }, 300);
       } catch (e) {
-        console.warn("AdSense Push Error (Recovering...):", placementId);
-        isInjectedRef.current = false; // السماح بإعادة المحاولة في حال الفشل
+        console.error("AdSense Push Fatal:", placementId);
+        isInjectedRef.current = false;
       }
     }
   };
 
   return (
     <div 
-      className={`ad-slot-boundary w-full flex justify-center transition-all duration-1000`}
+      className="ad-slot-boundary w-full flex justify-center items-center overflow-hidden transition-all duration-700"
       style={{ 
-        // نستخدم opacity و visibility بدلاً من display none لتجنب availableWidth=0
         opacity: isSafe ? 1 : 0,
         visibility: isSafe ? 'visible' : 'hidden',
-        minHeight: isSafe ? '100px' : '0px',
-        height: isSafe ? 'auto' : '1px',
-        overflow: 'hidden',
-        margin: isSafe ? '1.5rem 0' : '0'
+        minHeight: isSafe ? '100px' : '1px',
+        margin: isSafe ? '2rem 0' : '0'
       }}
     >
       <div 
         ref={containerRef} 
-        className="w-full flex justify-center items-center overflow-hidden" 
+        className="w-full flex justify-center items-center" 
         style={{ minWidth: '100%' }}
       />
     </div>
