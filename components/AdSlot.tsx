@@ -5,22 +5,23 @@ import { SiteSettings } from '../types';
 
 interface AdSlotProps {
   placementId: string;
-  currentPath?: string; // مضاف لتتبع تغيير الصفحة
+  currentPath?: string;
 }
 
 export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [isSafe, setIsSafe] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const initialized = useRef(false);
+  const isInjectedRef = useRef(false);
 
-  // إعادة ضبط الحالة عند تغيير الصفحة لضمان إعادة الفحص والحقن
+  // 1. إعادة الضبط عند تغيير المسار
   useEffect(() => {
     setIsSafe(false);
-    initialized.current = false;
+    isInjectedRef.current = false;
     if (containerRef.current) containerRef.current.innerHTML = '';
   }, [currentPath]);
 
+  // 2. تحميل الإعدادات
   useEffect(() => {
     let active = true;
     adGuard.getSettings().then(data => {
@@ -29,6 +30,7 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     return () => { active = false; };
   }, []);
 
+  // 3. نظام فحص الأمان (حماية فيسبوك)
   useEffect(() => {
     if (!settings || isSafe) return;
 
@@ -46,46 +48,67 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     return () => clearInterval(safetyInterval);
   }, [settings, isSafe, currentPath]);
 
+  // 4. عملية الحقن الآمنة
   useEffect(() => {
-    if (isSafe && settings && !initialized.current) {
-      initialized.current = true;
-      // نستخدم التوقيت لضمان استقرار المتصفح قبل الحقن
-      requestAnimationFrame(() => {
-        setTimeout(renderAd, 200);
-      });
+    if (isSafe && settings && !isInjectedRef.current) {
+      // ننتظر حتى تكتمل عملية الـ DOM Update وتظهر الحاوية
+      const timer = setTimeout(() => {
+        handleAdRender();
+      }, 300);
+      return () => clearTimeout(timer);
     }
   }, [isSafe, settings, currentPath]);
 
-  const renderAd = () => {
-    if (!containerRef.current || !settings) return;
+  const handleAdRender = () => {
+    const currentContainer = containerRef.current;
+    if (!currentContainer || isInjectedRef.current) return;
 
-    const placement = settings.customAdPlacements?.find(p => p.id === placementId);
+    // التحقق من وجود عرض متاح (حل مشكلة availableWidth=0)
+    if (currentContainer.offsetWidth <= 0) {
+      // إذا لم يظهر العرض بعد، نحاول مرة أخرى في الفريم القادم
+      requestAnimationFrame(handleAdRender);
+      return;
+    }
+
+    const placement = settings?.customAdPlacements?.find(p => p.id === placementId);
     if (!placement || !placement.isActive || !placement.code?.trim()) return;
 
-    const currentContainer = containerRef.current;
+    // منع الحقن المزدوج
+    isInjectedRef.current = true;
     currentContainer.innerHTML = ''; 
 
+    // إنشاء حاوية فرعية
     const adWrapper = document.createElement('div');
-    adWrapper.className = "ad-inner-wrapper w-full flex justify-center";
+    adWrapper.className = "adsense-wrapper w-full flex justify-center overflow-hidden";
     adWrapper.innerHTML = placement.code;
     currentContainer.appendChild(adWrapper);
 
-    if (placement.code.includes('adsbygoogle')) {
+    // التحقق من وجود عنصر ins قبل عمل push
+    const insTag = adWrapper.querySelector('ins.adsbygoogle');
+    if (insTag && !insTag.hasAttribute('data-adsbygoogle-status')) {
       try {
-        // تأخير بسيط للتأكد من وجود ins tag في الـ DOM
-        setTimeout(() => {
-          const adsbygoogle = (window as any).adsbygoogle || [];
-          adsbygoogle.push({});
-        }, 150);
+        (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+        (window as any).adsbygoogle.push({});
       } catch (e) {
-        console.warn("AdSense push issue on", placementId);
+        console.error("AdSense Push Error for:", placementId, e);
+        // في حال الخطأ، نعيد المحاولة لاحقاً
+        isInjectedRef.current = false;
       }
     }
   };
 
   return (
-    <div className={`ad-slot-wrapper w-full flex justify-center transition-opacity duration-1000 ${isSafe ? 'opacity-100 py-4 md:py-8 min-h-[100px]' : 'opacity-0 h-0 overflow-hidden'}`}>
-      <div ref={containerRef} className="w-full flex justify-center items-center overflow-hidden" />
+    <div 
+      className={`ad-slot-container w-full flex justify-center transition-all duration-500 ${
+        isSafe ? 'opacity-100 py-4 min-h-[100px]' : 'opacity-0 h-0 overflow-hidden'
+      }`}
+      style={{ display: isSafe ? 'flex' : 'none' }} // استخدام display block/flex لضمان حساب العرض
+    >
+      <div 
+        ref={containerRef} 
+        className="w-full flex justify-center items-center" 
+        style={{ minWidth: '100%' }}
+      />
     </div>
   );
 };
