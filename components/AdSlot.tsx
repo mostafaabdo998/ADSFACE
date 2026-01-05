@@ -13,109 +13,118 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isInjectedRef = useRef(false);
-  const checkWidthInterval = useRef<number | null>(null);
 
+  // 1. تصفير الحالة عند تغيير الصفحة
   useEffect(() => {
     setIsSafe(false);
     isInjectedRef.current = false;
-    if (checkWidthInterval.current) window.clearInterval(checkWidthInterval.current);
     if (containerRef.current) containerRef.current.innerHTML = '';
   }, [currentPath]);
 
+  // 2. جلب الإعدادات
   useEffect(() => {
-    let active = true;
     adGuard.getSettings().then(data => {
-      if (active && data) setSettings(data);
+      if (data) setSettings(data);
     });
-    return () => { active = false; };
   }, []);
 
+  // 3. محرك فحص الأمان
   useEffect(() => {
     if (!settings || isSafe) return;
 
-    const safetyInterval = window.setInterval(async () => {
+    const safetyInterval = setInterval(async () => {
       const safe = await adGuard.checkSafety(settings);
       if (safe) {
         setIsSafe(true);
-        if (settings.adClient) {
-          adGuard.injectAdSense(settings.adClient);
-        }
-        window.clearInterval(safetyInterval);
+        if (settings.adClient) adGuard.injectAdSense(settings.adClient);
+        clearInterval(safetyInterval);
       }
-    }, 800); // تسريع الفحص قليلاً
+    }, 600);
 
-    return () => window.clearInterval(safetyInterval);
-  }, [settings, isSafe, currentPath]);
+    return () => clearInterval(safetyInterval);
+  }, [settings, isSafe]);
 
+  // 4. عملية الحقن الاحترافية
   useEffect(() => {
-    if (isSafe && settings && !isInjectedRef.current) {
-      // الانتظار حتى استقرار العرض (أهم خطوة)
-      checkWidthInterval.current = window.setInterval(() => {
-        const el = containerRef.current;
-        if (el && el.clientWidth > 100) { // التأكد من وجود عرض حقيقي وليس مجرد 1 بكسل
-          window.clearInterval(checkWidthInterval.current!);
-          handleAdRender();
-        }
-      }, 150);
+    if (isSafe && settings && !isInjectedRef.current && containerRef.current) {
+      // ننتظر قليلاً حتى ينتهي الـ CSS Transition ويصبح العنصر مرئياً بوضوح
+      const timer = setTimeout(() => {
+        handleExpertInjection();
+      }, 500);
+      return () => clearTimeout(timer);
     }
-    return () => {
-      if (checkWidthInterval.current) window.clearInterval(checkWidthInterval.current);
-    };
-  }, [isSafe, settings, currentPath]);
+  }, [isSafe, settings]);
 
-  const handleAdRender = () => {
+  const handleExpertInjection = () => {
     if (!containerRef.current || isInjectedRef.current) return;
 
     const placement = settings?.customAdPlacements?.find(p => p.id === placementId);
     if (!placement || !placement.isActive || !placement.code?.trim()) return;
 
     isInjectedRef.current = true;
-    const currentContainer = containerRef.current;
-    currentContainer.innerHTML = ''; 
-
-    // تغليف الكود بـ div يضمن الـ Layout
-    const adWrapper = document.createElement('div');
-    adWrapper.className = "adsense-inject-point w-full min-h-[100px]";
-    adWrapper.style.display = 'block';
-    adWrapper.style.width = '100%';
-    adWrapper.innerHTML = placement.code;
     
-    currentContainer.appendChild(adWrapper);
+    // إنشاء حاوية نظيفة
+    const container = containerRef.current;
+    container.innerHTML = '';
 
-    const insTag = adWrapper.querySelector('ins.adsbygoogle');
-    if (insTag) {
-      // إجبار الـ ins على العرض قبل الـ push
-      (insTag as HTMLElement).style.display = 'block';
+    // تحليل الكود لاستخراج الـ attributes من وسم ins
+    // نستخدم DOMParser لتجنب مشاكل الـ innerHTML
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(placement.code, 'text/html');
+    const originalIns = doc.querySelector('ins.adsbygoogle');
+
+    if (!originalIns) {
+      // إذا لم يجد وسم ins، نقوم بحقن الكود كما هو كملاذ أخير
+      container.innerHTML = placement.code;
+    } else {
+      // بناء وسم ins جديد برمجياً لضمان تنفيذ نظيف
+      const newIns = document.createElement('ins');
+      newIns.className = 'adsbygoogle';
       
-      try {
-        setTimeout(() => {
-          if (!insTag.hasAttribute('data-adsbygoogle-status')) {
-            (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-            (window as any).adsbygoogle.push({});
-          }
-        }, 300);
-      } catch (e) {
-        console.error("AdSense Push Fatal:", placementId);
-        isInjectedRef.current = false;
-      }
+      // نقل كافة الخصائص (data-ad-client, data-ad-slot, etc)
+      Array.from(originalIns.attributes).forEach(attr => {
+        newIns.setAttribute(attr.name, attr.value);
+      });
+
+      // إجبار التنسيق ليكون مرئياً
+      newIns.style.display = 'block';
+      newIns.style.minHeight = '100px';
+      newIns.style.width = '100%';
+
+      container.appendChild(newIns);
+    }
+
+    // الخطوة الحاسمة: استدعاء محرك جوجل
+    try {
+      (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+      (window as any).adsbygoogle.push({});
+    } catch (e) {
+      console.warn("AdSense Engine Busy - Retrying...");
+      setTimeout(() => {
+        try { (window as any).adsbygoogle.push({}); } catch(i) {}
+      }, 1000);
     }
   };
 
   return (
     <div 
-      className="ad-slot-boundary w-full flex justify-center items-center overflow-hidden transition-all duration-700"
+      className="ad-slot-wrapper w-full overflow-hidden transition-all duration-1000 ease-in-out"
       style={{ 
+        maxHeight: isSafe ? '1000px' : '0px',
         opacity: isSafe ? 1 : 0,
-        visibility: isSafe ? 'visible' : 'hidden',
-        minHeight: isSafe ? '100px' : '1px',
         margin: isSafe ? '2rem 0' : '0'
       }}
     >
       <div 
         ref={containerRef} 
-        className="w-full flex justify-center items-center" 
-        style={{ minWidth: '100%' }}
+        className="w-full flex justify-center items-center bg-gray-50/30 rounded-2xl"
+        style={{ minHeight: isSafe ? '100px' : '0px' }}
       />
+      {isSafe && (
+        <div className="text-[8px] text-gray-200 text-center mt-1 uppercase tracking-widest font-bold">
+          Advertisement
+        </div>
+      )}
     </div>
   );
 };
