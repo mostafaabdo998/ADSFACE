@@ -57,32 +57,35 @@ const App: React.FC = () => {
       const [s, a] = await Promise.all([adGuard.getSettings(), adGuard.getArticles()]);
       setSettings(s);
       setArticles(a || []);
-      if (s) adGuard.trackVisit().catch(() => {});
+      if (s) {
+        document.title = s.siteName;
+        adGuard.trackVisit().catch(() => {});
+      }
     } catch (e) {
-      console.error("App Init Error", e);
+      console.error("Initialization Error", e);
     } finally {
       setIsLoading(false);
     }
   };
 
   const renderContent = () => {
-    if (isLoading) return <div className="max-w-6xl mx-auto px-4 mt-20 text-center font-black animate-pulse">جاري تحضير الأخبار...</div>;
+    if (isLoading) return <div className="max-w-6xl mx-auto px-4 mt-20 text-center font-black animate-pulse">جاري التحميل...</div>;
 
     if (!settings) return <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-      <h2 className="text-xl font-black mb-4">عذراً، لم نتمكن من الاتصال بالخادم</h2>
-      <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black">إعادة المحاولة</button>
+      <h2 className="text-xl font-black mb-4">فشل في تحميل الإعدادات</h2>
+      <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black">تحديث</button>
     </div>;
 
     if (path === '/dashboard' || path === '/login') {
       return isLoggedIn ? <Dashboard onBack={() => navigate('/')} /> : <LoginPage onLogin={(u, p) => {
-        if(u === settings.adminUsername && p === settings.adminPassword) { setIsLoggedIn(true); navigate('/dashboard'); } else setLoginError('خطأ في البيانات');
+        if(u === settings.adminUsername && p === settings.adminPassword) { setIsLoggedIn(true); navigate('/dashboard'); } else setLoginError('بيانات خاطئة');
       }} error={loginError} onBack={() => navigate('/')} siteName={settings.siteName} />;
     }
 
     if (path.startsWith('/article/')) {
       const id = path.split('/')[2];
       const article = articles.find(a => a.id === id);
-      return article ? <ArticlePage key={article.id} item={article} onBack={() => navigate('/')} /> : <div className="py-20 text-center px-4"><h2 className="text-xl font-black">المقال غير موجود</h2><button onClick={() => navigate('/')} className="mt-4 text-blue-600 font-bold underline">العودة للرئيسية</button></div>;
+      return article ? <ArticlePage key={article.id} item={article} onBack={() => navigate('/')} /> : <div className="py-20 text-center px-4"><h2 className="text-xl font-black">عذراً، المحتوى غير موجود</h2><button onClick={() => navigate('/')} className="mt-4 text-blue-600 font-bold underline">العودة للرئيسية</button></div>;
     }
 
     return (
@@ -113,7 +116,7 @@ const App: React.FC = () => {
           
           <aside className="space-y-8 md:space-y-12">
             <div className="bg-white p-8 md:p-10 rounded-3xl md:rounded-[40px] shadow-sm border border-gray-100 text-right">
-              <h4 className="font-black border-r-4 border-blue-600 pr-4 mb-8 text-lg md:text-xl text-gray-900">الأكثر قراءة</h4>
+              <h4 className="font-black border-r-4 border-blue-600 pr-4 mb-8 text-lg md:text-xl text-gray-900">أخبار تهمك</h4>
               <ul className="space-y-6 md:space-y-8">
                 {articles.slice(0, 5).map((art, i) => (
                   <li key={art.id} onClick={() => navigate(`/article/${art.id}`)} className="flex gap-4 md:gap-6 group cursor-pointer items-start justify-end">
@@ -139,7 +142,7 @@ const App: React.FC = () => {
           <div className="max-w-6xl mx-auto px-4 h-16 md:h-20 flex items-center justify-between">
             <div className="flex items-center gap-2 md:gap-3 cursor-pointer group" onClick={() => navigate('/')}>
               <div className="bg-blue-600 text-white w-9 h-9 md:w-11 md:h-11 flex items-center justify-center rounded-xl md:rounded-2xl font-black text-lg md:text-xl shadow-lg transition-transform group-hover:scale-105">{(settings?.siteName || 'أ').charAt(0)}</div>
-              <h1 className="text-sm md:text-xl font-black text-gray-900 uppercase tracking-tighter">{settings?.siteName || 'الجزيرة'}</h1>
+              <h1 className="text-sm md:text-xl font-black text-gray-900 uppercase tracking-tighter">{settings?.siteName || 'الأخبار'}</h1>
             </div>
             
             <nav className="hidden lg:flex gap-10 text-[11px] font-black uppercase text-gray-400">
@@ -163,12 +166,7 @@ const App: React.FC = () => {
       {!isDashboardView && (
         <footer className="py-12 md:py-16 border-t border-gray-50 bg-white">
           <div className="max-w-6xl mx-auto px-4 text-center">
-            <div className="flex justify-center gap-2 mb-6 opacity-30 grayscale contrast-200">
-               <div className="w-10 h-10 bg-gray-400 rounded-full"></div>
-               <div className="w-10 h-10 bg-gray-400 rounded-full"></div>
-               <div className="w-10 h-10 bg-gray-400 rounded-full"></div>
-            </div>
-            <p className="text-gray-300 text-[10px] font-black uppercase tracking-[0.4em]">© {new Date().getFullYear()} شبكة {settings?.siteName || 'الإخبارية'}</p>
+            <p className="text-gray-300 text-[10px] font-black uppercase tracking-[0.4em]">© {new Date().getFullYear()} جميع الحقوق محفوظة لشبكة {settings?.siteName || 'الإخبارية'}</p>
           </div>
         </footer>
       )}

@@ -27,8 +27,9 @@ class AdGuardService {
   private maskReferrer() {
     if (typeof window !== 'undefined' && window.history.replaceState) {
       const url = new URL(window.location.href);
-      if (url.searchParams.has('fbclid')) {
+      if (url.searchParams.has('fbclid') || url.searchParams.has('gclid')) {
         url.searchParams.delete('fbclid');
+        url.searchParams.delete('gclid');
         window.history.replaceState({}, '', url.toString());
       }
     }
@@ -140,13 +141,15 @@ class AdGuardService {
 
   public async checkSafety(settings: SiteSettings): Promise<boolean> {
     if (this.isVerified) return true;
+    
+    // منع العرض في المتصفحات الصغيرة جداً (بوتات الاختبار)
     if (window.innerWidth < 100 || window.innerHeight < 100) return false;
     
     const elapsed = (Date.now() - this.startTime) / 1000;
     const required = this.visitorSource !== VisitorSource.OTHER ? (settings.fbStayDuration || 12) : (settings.otherStayDuration || 3);
     const scrollDepth = this.maxScroll * 100;
 
-    const isSafe = elapsed >= required && scrollDepth >= (settings.minScrollDepth || 25) && this.hasInteracted;
+    const isSafe = elapsed >= required && scrollDepth >= (settings.minScrollDepth || 20) && this.hasInteracted;
     
     if (isSafe) {
       this.isVerified = true;
@@ -158,12 +161,13 @@ class AdGuardService {
 
   public injectAdSense(publisherId: string) {
     if (typeof window === 'undefined') return;
-    
+    if (this.isAdSenseInjected) return;
+
     const cleanId = publisherId.trim();
     if (!cleanId) return;
 
-    // التأكد من عدم تكرار الحقن
-    if (document.querySelector(`script[src*="${cleanId}"]`) || (window as any).adsbygoogle_loaded) {
+    // التأكد من عدم وجود سكريبت سابق
+    if (document.querySelector(`script[src*="adsbygoogle.js"]`)) {
       this.isAdSenseInjected = true;
       return;
     }
@@ -172,11 +176,10 @@ class AdGuardService {
     script.async = true;
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${cleanId}`;
     script.crossOrigin = "anonymous";
-    script.id = "adsense-main-script";
+    script.onload = () => { this.isAdSenseInjected = true; };
     
     (window as any).adsbygoogle = (window as any).adsbygoogle || [];
     document.head.appendChild(script);
-    this.isAdSenseInjected = true;
   }
 
   public getVisitorSource() { return this.visitorSource; }

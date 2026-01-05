@@ -5,12 +5,10 @@ import { SiteSettings } from '../types';
 
 interface AdSlotProps {
   placementId: string; 
-  format?: 'auto' | 'fluid' | 'rectangle' | 'horizontal';      
 }
 
-export const AdSlot: React.FC<AdSlotProps> = ({ placementId, format = 'auto' }) => {
-  const [isReady, setIsReady] = useState(false);
-  const [showAd, setShowAd] = useState(false);
+export const AdSlot: React.FC<AdSlotProps> = ({ placementId }) => {
+  const [isSafe, setIsSafe] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pushedRef = useRef(false);
@@ -25,62 +23,62 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, format = 'auto' }) 
 
   useEffect(() => {
     if (!settings) return;
-    const interval = setInterval(async () => {
-      const isSafe = await adGuard.checkSafety(settings);
-      if (isSafe) {
-        setIsReady(true);
-        if (settings.adClient) adGuard.injectAdSense(settings.adClient);
-        clearInterval(interval);
+
+    // محرك التحقق من الأمان - صمام الأمان ضد تقييد أدسنس
+    const safetyInterval = setInterval(async () => {
+      const safe = await adGuard.checkSafety(settings);
+      if (safe) {
+        setIsSafe(true);
+        if (settings.adClient) {
+          adGuard.injectAdSense(settings.adClient);
+        }
+        clearInterval(safetyInterval);
       }
     }, 1000);
-    return () => clearInterval(interval);
+
+    return () => clearInterval(safetyInterval);
   }, [settings]);
 
   useEffect(() => {
-    if (isReady) {
-      const waitTime = adGuard.getVisitorSource() === 'other' ? 100 : 2000;
-      const timer = setTimeout(() => setShowAd(true), waitTime);
-      return () => clearTimeout(timer);
+    if (isSafe && settings && !pushedRef.current) {
+      // الانتظار حتى استقرار الصفحة تماماً قبل الرندر
+      const renderTimer = setTimeout(() => {
+        renderAdLogic();
+      }, 500); 
+      return () => clearTimeout(renderTimer);
     }
-  }, [isReady]);
+  }, [isSafe, settings]);
 
-  useEffect(() => {
-    if (showAd && settings && !pushedRef.current) {
-      const checkAndRender = () => {
-        if (containerRef.current && containerRef.current.offsetWidth > 0) {
-          renderAd();
-        } else {
-          requestAnimationFrame(checkAndRender);
-        }
-      };
-      checkAndRender();
-    }
-  }, [showAd, settings]);
-
-  const renderAd = () => {
+  const renderAdLogic = () => {
     if (!containerRef.current || !settings || pushedRef.current) return;
-    const currentContainer = containerRef.current;
-    
+
     const placement = settings.customAdPlacements?.find(p => p.id === placementId);
-    if (!placement || !placement.isActive) return;
+    if (!placement || !placement.isActive || !placement.code?.trim()) return;
 
-    currentContainer.innerHTML = '';
-    const wrapper = document.createElement('div');
-    wrapper.style.width = '100%';
-    wrapper.innerHTML = placement.code;
-    currentContainer.appendChild(wrapper);
+    const currentContainer = containerRef.current;
+    currentContainer.innerHTML = ''; 
 
+    // حقن الكود الفعلي للإعلان
+    const adWrapper = document.createElement('div');
+    adWrapper.className = "ad-inner-wrapper w-full flex justify-center";
+    adWrapper.innerHTML = placement.code;
+    currentContainer.appendChild(adWrapper);
+
+    // تفعيل وحدات AdSense
     if (placement.code.includes('adsbygoogle')) {
       try {
-        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+        const adsbygoogle = (window as any).adsbygoogle || [];
+        adsbygoogle.push({});
         pushedRef.current = true;
-      } catch (e) {}
+      } catch (e) {
+        console.warn("AdSense push delayed or failed", placementId);
+      }
     }
   };
 
   return (
-    <div className={`w-full flex justify-center transition-all duration-1000 ${showAd ? 'opacity-100 my-4 md:my-8 min-h-[100px]' : 'opacity-0 h-0 overflow-hidden'}`}>
-      <div ref={containerRef} className="w-full flex justify-center items-center" />
+    <div className={`ad-slot-container w-full flex justify-center transition-all duration-1000 ${isSafe ? 'opacity-100 py-4 md:py-8 min-h-[50px]' : 'opacity-0 h-0 overflow-hidden'}`}>
+      <div ref={containerRef} className="w-full flex justify-center items-center overflow-hidden" />
     </div>
   );
 };
