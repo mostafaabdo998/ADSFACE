@@ -31,7 +31,10 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
       const isSafe = await adGuard.checkSafety(settings);
       if (isSafe) {
         setIsReady(true);
-        adGuard.injectAdSense(settings.adClient);
+        // حقن الملف الرئيسي لأدسنس فور التأكد من أمان الزائر
+        if (settings.adClient) {
+          adGuard.injectAdSense(settings.adClient);
+        }
         clearInterval(safetyInterval);
       }
     }, 1000);
@@ -41,7 +44,7 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
 
   useEffect(() => {
     if (isReady && showMask) {
-      const maskDuration = source === VisitorSource.OTHER ? 2000 : 4000;
+      const maskDuration = source === VisitorSource.OTHER ? 1500 : 3500;
       const timer = setTimeout(() => setShowMask(false), maskDuration);
       return () => clearTimeout(timer);
     }
@@ -56,24 +59,40 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
 
       if (hasCustomCode && placement) {
         try {
-          const range = document.createRange();
-          const frag = range.createContextualFragment(placement.code || '');
-          containerRef.current.appendChild(frag);
+          // نقوم بتنظيف الكود المخصص وحقنه
+          const cleanCode = placement.code?.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "") || "";
+          containerRef.current.innerHTML = cleanCode;
+          
+          // إذا كان الكود يحتوي على إعلان أدسنس، نقوم بتفعيله يدوياً
+          if (placement.code?.includes('adsbygoogle')) {
+            setTimeout(() => {
+              try {
+                ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+              } catch (e) {
+                console.warn("AdSense manual push error: ", e);
+              }
+            }, 100);
+          }
         } catch (e) {
-          console.error("AdSlot: Custom code error", e);
+          console.error("AdSlot: Custom code processing error", e);
         }
       } else {
+        // الإعلان الافتراضي إذا لم يوجد كود مخصص
         const ins = document.createElement('ins');
         ins.className = 'adsbygoogle';
         ins.style.display = 'block';
+        ins.style.minHeight = '100px';
         ins.setAttribute('data-ad-client', settings.adClient);
         ins.setAttribute('data-ad-slot', adSlot || settings.adSlotMain);
         ins.setAttribute('data-ad-format', format);
         ins.setAttribute('data-full-width-responsive', 'true');
         containerRef.current.appendChild(ins);
-        try {
-          ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-        } catch (e) {}
+        
+        setTimeout(() => {
+          try {
+            ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+          } catch (e) {}
+        }, 100);
       }
     }
   }, [isReady, settings, adSlot, format, placementId]);
@@ -83,12 +102,12 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
       {!isReady && (
         <div className="text-gray-300 text-[10px] p-6 text-center flex flex-col items-center gap-2 font-black uppercase tracking-widest">
            <div className="w-4 h-4 border border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
-           <p>جاري تأمين الاتصال الإعلاني...</p>
+           <p>جاري فحص أمان الاتصال...</p>
         </div>
       )}
-      <div ref={containerRef} className="w-full h-full" />
+      <div ref={containerRef} className="w-full flex justify-center" />
       {isReady && showMask && (
-        <div className="ad-mask bg-white/70 backdrop-blur-[2px] transition-opacity duration-500 animate-pulse"></div>
+        <div className="ad-mask bg-white/70 backdrop-blur-[1px] transition-opacity duration-500 animate-pulse"></div>
       )}
     </div>
   );
