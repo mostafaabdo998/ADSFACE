@@ -8,111 +8,104 @@ interface AdSlotProps {
   currentPath?: string;
 }
 
-// أحجام قياسية متوافقة تماماً مع أدسنس لكل موضع
-const PLACEMENT_CONFIGS: Record<string, { minHeight: string, width: string, label: string }> = {
-  'pos_top': { minHeight: '90px', width: '100%', label: 'Top Banner' },
-  'pos_after_title': { minHeight: '280px', width: '100%', label: 'Lead Ad' },
-  'pos_mid_1': { minHeight: '300px', width: '100%', label: 'In-Article 1' },
-  'pos_mid_2': { minHeight: '300px', width: '100%', label: 'In-Article 2' },
-  'pos_bottom': { minHeight: '250px', width: '100%', label: 'Footer Ad' },
-  'pos_sidebar_main': { minHeight: '600px', width: '100%', label: 'Sidebar Tall' }
+const PLACEMENT_CONFIGS: Record<string, { minHeight: string }> = {
+  'pos_top': { minHeight: '90px' },
+  'pos_after_title': { minHeight: '280px' },
+  'pos_mid_1': { minHeight: '300px' },
+  'pos_mid_2': { minHeight: '300px' },
+  'pos_bottom': { minHeight: '250px' },
+  'pos_sidebar_main': { minHeight: '600px' }
 };
 
 export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [isSafe, setIsSafe] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isInjectedRef = useRef(false);
+  const isPushedRef = useRef(false);
   
-  const config = PLACEMENT_CONFIGS[placementId] || { minHeight: '100px', width: '100%', label: 'Ad Unit' };
+  const config = PLACEMENT_CONFIGS[placementId] || { minHeight: '100px' };
 
-  // 1. الاشتراك في حالة الأمان العالمية (بمجرد تحقق الأمان، يظهر الإعلان فوراً)
+  // 1. مزامنة حالة الأمان العالمية
   useEffect(() => {
     const unsubscribe = adGuard.subscribeToSafety((safe) => {
       setIsSafe(safe);
     });
-    return () => { unsubscribe(); };
+    return () => unsubscribe();
   }, []);
 
-  // 2. جلب الإعدادات
+  // 2. جلب الإعدادات (مرة واحدة)
   useEffect(() => {
-    adGuard.getSettings().then(data => {
-      if (data) setSettings(data);
-    });
+    adGuard.getSettings().then(setSettings);
   }, []);
 
-  // 3. الحقن عند تحقق الأمان وتوفر الإعدادات
+  // 3. بناء عنصر الـ INS بمجرد توفر الإعدادات (لضمان وجوده في الـ DOM فوراً للزواحف)
   useEffect(() => {
-    if (isSafe && settings && !isInjectedRef.current && containerRef.current) {
-      handleInjection();
+    if (!settings || !containerRef.current) return;
+    
+    const placement = settings.customAdPlacements?.find(p => p.id === placementId);
+    if (!placement || !placement.isActive || !placement.code?.trim()) {
+      containerRef.current.innerHTML = '';
+      return;
+    }
+
+    // استخراج الخصائص الأساسية عبر Regex (أكثر أماناً من DOMParser وأسرع)
+    const clientMatch = placement.code.match(/data-ad-client="([^"]+)"/);
+    const slotMatch = placement.code.match(/data-ad-slot="([^"]+)"/);
+    const formatMatch = placement.code.match(/data-ad-format="([^"]+)"/);
+    
+    const adClient = clientMatch ? clientMatch[1] : settings.adClient;
+    const adSlot = slotMatch ? slotMatch[1] : '';
+    const adFormat = formatMatch ? formatMatch[1] : 'auto';
+
+    if (!adSlot) {
+      // إذا لم يكن كود أدسنس قياسي (مثلاً سكريبت خارجي)، نحقنه مباشرة
+      containerRef.current.innerHTML = placement.code;
+      return;
+    }
+
+    // بناء الـ INS القياسي
+    containerRef.current.innerHTML = `
+      <ins class="adsbygoogle"
+           style="display:block; min-height:${config.minHeight};"
+           data-ad-client="${adClient}"
+           data-ad-slot="${adSlot}"
+           data-ad-format="${adFormat}"
+           data-full-width-responsive="true"></ins>
+    `;
+    
+    // إعادة ضبط حالة الـ Push عند تغيير المحتوى أو المسار
+    isPushedRef.current = false;
+  }, [settings, placementId, currentPath]);
+
+  // 4. تفعيل الإعلان (Push) فقط عندما تصبح الحالة Safe
+  useEffect(() => {
+    if (isSafe && !isPushedRef.current && containerRef.current) {
+      const ins = containerRef.current.querySelector('ins.adsbygoogle');
+      if (ins) {
+        try {
+          (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+          (window as any).adsbygoogle.push({});
+          isPushedRef.current = true;
+        } catch (e) {
+          console.warn(`AdSense Push Failed [${placementId}]:`, e);
+        }
+      }
     }
   }, [isSafe, settings, currentPath]);
 
-  const handleInjection = () => {
-    if (!containerRef.current || isInjectedRef.current) return;
-
-    const placement = settings?.customAdPlacements?.find(p => p.id === placementId);
-    if (!placement || !placement.isActive || !placement.code?.trim()) return;
-
-    isInjectedRef.current = true;
-    const container = containerRef.current;
-    
-    // استخراج وسم INS أو حقن الكود بالكامل
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(placement.code, 'text/html');
-    const originalIns = doc.querySelector('ins.adsbygoogle');
-
-    if (originalIns) {
-      const newIns = document.createElement('ins');
-      newIns.className = 'adsbygoogle';
-      
-      // نقل كافة الخصائص (data-ad-client, data-ad-slot, etc)
-      Array.from(originalIns.attributes).forEach(attr => {
-        if (attr.name !== 'style') newIns.setAttribute(attr.name, attr.value);
-      });
-
-      // فرض الأبعاد الصارمة (حجر الزاوية في ظهور الإعلانات)
-      newIns.style.display = 'block';
-      newIns.style.width = '100%';
-      newIns.style.height = config.minHeight;
-      newIns.style.minHeight = config.minHeight;
-      newIns.style.textDecoration = 'none';
-
-      container.innerHTML = '';
-      container.appendChild(newIns);
-
-      try {
-        (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-        (window as any).adsbygoogle.push({});
-      } catch (e) {
-        console.warn(`AdSense Push Error [${placementId}]:`, e);
-      }
-    } else {
-      // إذا كان الكود مخصصاً (سكريبت خارجي أو صورة)
-      container.innerHTML = placement.code;
-    }
-  };
-
   return (
     <div 
-      className="ads-container-fixed mx-auto my-8 overflow-hidden transition-opacity duration-1000"
+      className="ads-container-fixed mx-auto my-8 bg-transparent transition-opacity duration-700"
       style={{ 
-        width: config.width,
-        minHeight: config.minHeight, // حجز مساحة دائمة لمنع القفزات
-        opacity: isSafe ? 1 : 0,
-        visibility: isSafe ? 'visible' : 'hidden'
+        width: '100%',
+        minHeight: config.minHeight,
+        opacity: isSafe ? 1 : 0.05 // إبقاء شفافية خفيفة جداً بدلاً من الإخفاء الكامل لتحسين ثقة جوجل
       }}
     >
       <div 
         ref={containerRef} 
-        className="w-full flex justify-center items-center"
-        style={{ minHeight: config.minHeight }}
+        className="w-full flex justify-center items-center overflow-hidden"
       />
-      {isSafe && (
-        <div className="text-[7px] text-gray-300 text-center mt-1 uppercase tracking-[0.4em] font-bold opacity-30 select-none">
-          {config.label}
-        </div>
-      )}
     </div>
   );
 };

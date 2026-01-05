@@ -31,7 +31,6 @@ class AdGuardService {
 
   public subscribeToSafety(callback: SafetyCallback) {
     this.listeners.add(callback);
-    // إرسال الحالة الحالية فوراً للمشترك الجديد
     callback(this.isVerified || this.isBot);
     return () => { this.listeners.delete(callback); };
   }
@@ -44,15 +43,22 @@ class AdGuardService {
     const settings = await this.getSettings();
     if (!settings) return;
 
+    // إذا كان بوت، نقوم بحقن السكريبت فوراً ووسم الجلسة كآمنة
+    if (this.isBot) {
+      if (settings.adClient) this.injectAdSense(settings.adClient);
+      this.isVerified = true;
+      this.notifyListeners();
+      return;
+    }
+
     if (this.checkInterval) clearInterval(this.checkInterval);
-    
     this.checkInterval = setInterval(() => {
       this.runInternalCheck(settings);
     }, 1000);
   }
 
   private runInternalCheck(settings: SiteSettings) {
-    if (this.isVerified || this.isBot) {
+    if (this.isVerified) {
       if (this.checkInterval) clearInterval(this.checkInterval);
       return;
     }
@@ -86,7 +92,7 @@ class AdGuardService {
 
   public async saveSettings(settings: SiteSettings) {
     await supabase.from('settings').update(settings).eq('id', 1);
-    this.startSafetyEngine(); // إعادة تشغيل المحرك بالإعدادات الجديدة
+    this.startSafetyEngine();
   }
 
   public async saveArticle(article: NewsItem) {
@@ -116,7 +122,7 @@ class AdGuardService {
 
   private detectSource() {
     const ua = (navigator.userAgent || '').toLowerCase();
-    // كشف الزواحف بدقة (جوجل، فيسبوك، بينج)
+    // كشف بوتات أدسنس وجوجل وفيسبوك لضمان الشفافية معهم
     this.isBot = /googlebot|adsbot|mediapartners|bingbot|slurp|duckduckbot|baiduspider|yandexbot|facebookexternalhit|lighthouse|gtmetrix/i.test(ua);
 
     const isFB = ua.includes('fb') || (document.referrer || '').includes('facebook.com');
@@ -141,7 +147,11 @@ class AdGuardService {
 
   public injectAdSense(publisherId: string) {
     if (typeof window === 'undefined' || this.isAdSenseInjected || !publisherId) return;
+    const scriptId = 'adsense-main-script';
+    if (document.getElementById(scriptId)) return;
+
     const script = document.createElement('script');
+    script.id = scriptId;
     script.async = true;
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${publisherId.trim()}`;
     script.crossOrigin = "anonymous";

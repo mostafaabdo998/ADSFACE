@@ -36,6 +36,7 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         if (!s.customAdPlacements || s.customAdPlacements.length === 0) {
           s.customAdPlacements = defaultPlacements;
         } else {
+          // دمج المواضع المفقودة
           defaultPlacements.forEach(dp => {
             if (!s.customAdPlacements.find(p => p.id === dp.id)) {
               s.customAdPlacements.push(dp);
@@ -60,7 +61,7 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       try {
         await adGuard.saveSettings(toSave);
         setSettings({ ...toSave });
-        alert('تم حفظ الإعدادات بنجاح ✅');
+        alert('تم حفظ الإعدادات وتحديث محرك الحماية بنجاح ✅');
       } catch (e) { alert('فشل الحفظ ❌'); }
     }
   };
@@ -114,7 +115,6 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
 
   return (
     <div className={`mx-auto ${editingArticle ? 'max-w-full' : 'max-w-7xl px-4'} py-6`} dir="rtl">
-      {/* Header (Hidden in Edit Mode) */}
       {!editingArticle && (
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10 bg-white p-6 md:p-8 rounded-[30px] shadow-sm border border-gray-100">
           <div className="text-center md:text-right">
@@ -128,7 +128,6 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Tabs Navigation (Hidden in Edit Mode) */}
       {!editingArticle && (
         <div className="flex gap-2 mb-10 overflow-x-auto pb-4 no-scrollbar">
           {[
@@ -149,7 +148,6 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Analytics Tab */}
       {activeTab === 'analytics' && !editingArticle && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 animate-in fade-in duration-500">
            <div className="bg-white p-8 rounded-[35px] border border-gray-100 shadow-sm">
@@ -175,12 +173,11 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Ads Tab */}
       {activeTab === 'ads' && !editingArticle && (
         <div className="space-y-8 animate-in fade-in duration-500">
           <div className="bg-white p-6 md:p-10 rounded-[40px] border border-gray-100 shadow-sm">
             <h3 className="text-xl font-black mb-4 border-r-4 border-yellow-500 pr-4">خريطة الإعلانات المحمية</h3>
-            <p className="text-xs text-gray-400 mb-8 px-5">قم بلصق أكواد أدسنس هنا. سيقوم النظام بحمايتها وتأخير ظهورها لزوار فيسبوك تلقائياً.</p>
+            <p className="text-xs text-gray-400 mb-8 px-5">يتم حقن وسم الـ INS دائماً لضمان توافق السياسات، وتأخير طلب الإعلان (Push) فقط.</p>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                {(settings.customAdPlacements || []).map((pos, idx) => (
                  <div key={pos.id} className="p-6 border border-gray-50 rounded-3xl bg-gray-50/50">
@@ -202,7 +199,7 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                         updated[idx].code = e.target.value;
                         setSettings({...settings, customAdPlacements: updated});
                       }} 
-                      placeholder="ألصق كود أدسنس (ins + script) هنا..."
+                      placeholder="ألصق كود أدسنس القياسي هنا..."
                       rows={5}
                       className="w-full bg-white border border-gray-200 rounded-2xl px-5 py-4 font-mono text-[10px] outline-none text-left"
                       dir="ltr"
@@ -214,12 +211,11 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                <label className="text-[10px] font-black text-blue-600 uppercase mb-2 block">معرف الناشر العام (Ad Client)</label>
                <input type="text" placeholder="ca-pub-XXXXXXXXXXXXXXXX" value={settings.adClient || ''} onChange={e => setSettings({...settings, adClient: e.target.value})} className="w-full bg-white p-4 rounded-xl font-bold border-none outline-none text-center" dir="ltr" />
             </div>
-            <button onClick={() => handleSaveSettings()} className="mt-10 w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-sm shadow-xl">تحديث كافة الوحدات</button>
+            <button onClick={() => handleSaveSettings()} className="mt-10 w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-blue-700 transition-all">تحديث الوحدات فوراً</button>
           </div>
         </div>
       )}
 
-      {/* Articles Tab & Full Screen Editor */}
       {activeTab === 'articles' && (
         <div className="animate-in fade-in duration-500">
            {!editingArticle ? (
@@ -318,7 +314,6 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         </div>
       )}
 
-      {/* Other Tabs Logic */}
       {activeTab === 'shield' && !editingArticle && (
         <div className="bg-white p-6 md:p-10 rounded-[40px] border border-gray-100 shadow-sm animate-in fade-in duration-500 text-right">
            <h3 className="text-xl font-black mb-4 border-r-4 border-red-600 pr-4">محرك الحماية (AdSense Guard)</h3>
