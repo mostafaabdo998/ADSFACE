@@ -14,13 +14,13 @@ class AdGuardService {
   private isAdSenseInjected: boolean = false;
   private isBot: boolean = false;
   private listeners: Set<SafetyCallback> = new Set();
-  private checkInterval: any = null;
+  private cachedSettings: SiteSettings | null = null;
 
   private constructor() {
     if (typeof window !== 'undefined') {
       this.detectSource();
-      this.initListeners();
-      this.startSafetyEngine();
+      this.initEventListeners();
+      this.loadAndInit();
     }
   }
 
@@ -29,39 +29,55 @@ class AdGuardService {
     return AdGuardService.instance;
   }
 
+  private async loadAndInit() {
+    const settings = await this.getSettings();
+    if (settings?.adClient) {
+      this.injectAdSenseGlobal(settings.adClient);
+    }
+    // إذا كان بوت زاحف (SEO Bot)، نفعله فوراً
+    if (this.isBot) {
+      this.isVerified = true;
+      this.notifyListeners();
+    }
+  }
+
   public subscribeToSafety(callback: SafetyCallback) {
     this.listeners.add(callback);
-    callback(this.isVerified || this.isBot);
+    callback(this.isVerified);
     return () => { this.listeners.delete(callback); };
   }
 
   private notifyListeners() {
-    this.listeners.forEach(cb => cb(true));
+    this.listeners.forEach(cb => cb(this.isVerified));
   }
 
-  private async startSafetyEngine() {
-    const settings = await this.getSettings();
+  private initEventListeners() {
+    const checkAction = () => {
+      if (this.isVerified) return;
+      this.checkSafety();
+    };
+
+    window.addEventListener('scroll', () => {
+      const winScroll = window.scrollY;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = height > 0 ? (winScroll / height) : 0;
+      if (scrolled > this.maxScroll) this.maxScroll = scrolled;
+      checkAction();
+    }, { passive: true });
+
+    ['mousedown', 'touchstart', 'keydown'].forEach(ev => {
+      window.addEventListener(ev, () => {
+        this.hasInteracted = true;
+        checkAction();
+      }, { once: true });
+    });
+  }
+
+  private async checkSafety() {
+    if (this.isVerified) return;
+    
+    const settings = this.cachedSettings || await this.getSettings();
     if (!settings) return;
-
-    // إذا كان بوت، نقوم بحقن السكريبت فوراً ووسم الجلسة كآمنة
-    if (this.isBot) {
-      if (settings.adClient) this.injectAdSense(settings.adClient);
-      this.isVerified = true;
-      this.notifyListeners();
-      return;
-    }
-
-    if (this.checkInterval) clearInterval(this.checkInterval);
-    this.checkInterval = setInterval(() => {
-      this.runInternalCheck(settings);
-    }, 1000);
-  }
-
-  private runInternalCheck(settings: SiteSettings) {
-    if (this.isVerified) {
-      if (this.checkInterval) clearInterval(this.checkInterval);
-      return;
-    }
 
     const elapsed = (Date.now() - this.startTime) / 1000;
     const required = this.visitorSource === VisitorSource.FACEBOOK ? (settings.fbStayDuration || 12) : (settings.otherStayDuration || 3);
@@ -69,16 +85,17 @@ class AdGuardService {
 
     if (elapsed >= required && scrollDepth >= (settings.minScrollDepth || 20) && this.hasInteracted) {
       this.isVerified = true;
-      if (settings.adClient) this.injectAdSense(settings.adClient);
       this.notifyListeners();
     }
   }
 
   public async getSettings(): Promise<SiteSettings | null> {
+    if (this.cachedSettings) return this.cachedSettings;
     try {
       const { data, error } = await supabase.from('settings').select('*').eq('id', 1).single();
       if (error) throw error;
-      return data as SiteSettings;
+      this.cachedSettings = data as SiteSettings;
+      return this.cachedSettings;
     } catch (e) { return null; }
   }
 
@@ -91,8 +108,9 @@ class AdGuardService {
   }
 
   public async saveSettings(settings: SiteSettings) {
+    this.cachedSettings = settings;
     await supabase.from('settings').update(settings).eq('id', 1);
-    this.startSafetyEngine();
+    if (settings.adClient) this.injectAdSenseGlobal(settings.adClient);
   }
 
   public async saveArticle(article: NewsItem) {
@@ -122,32 +140,17 @@ class AdGuardService {
 
   private detectSource() {
     const ua = (navigator.userAgent || '').toLowerCase();
-    // كشف بوتات أدسنس وجوجل وفيسبوك لضمان الشفافية معهم
-    this.isBot = /googlebot|adsbot|mediapartners|bingbot|slurp|duckduckbot|baiduspider|yandexbot|facebookexternalhit|lighthouse|gtmetrix/i.test(ua);
+    // بوتات الأرشفة فقط هي من تتجاوز الفحص لضمان الـ SEO
+    // بوتات مراجعة أدسنس (adsbot/mediapartners) يجب أن تعامل كمستخدم عادي لمنع كشف الـ Cloaking
+    this.isBot = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot/i.test(ua);
 
     const isFB = ua.includes('fb') || (document.referrer || '').includes('facebook.com');
     this.visitorSource = isFB ? VisitorSource.FACEBOOK : VisitorSource.OTHER;
   }
 
-  private initListeners() {
-    const updateScroll = () => {
-      const winScroll = window.scrollY;
-      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-      const scrolled = height > 0 ? (winScroll / height) : 0;
-      if (scrolled > this.maxScroll) this.maxScroll = scrolled;
-    };
-    window.addEventListener('scroll', updateScroll, { passive: true });
-
-    const interactionHandler = () => { 
-      this.hasInteracted = true; 
-      ['mousemove', 'touchstart', 'scroll', 'keydown'].forEach(ev => window.removeEventListener(ev, interactionHandler));
-    };
-    ['mousemove', 'touchstart', 'scroll', 'keydown'].forEach(ev => window.addEventListener(ev, interactionHandler));
-  }
-
-  public injectAdSense(publisherId: string) {
+  public injectAdSenseGlobal(publisherId: string) {
     if (typeof window === 'undefined' || this.isAdSenseInjected || !publisherId) return;
-    const scriptId = 'adsense-main-script';
+    const scriptId = 'adsense-global-init';
     if (document.getElementById(scriptId)) return;
 
     const script = document.createElement('script');

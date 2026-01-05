@@ -21,24 +21,21 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [isSafe, setIsSafe] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isPushedRef = useRef(false);
+  const isPushed = useRef(false);
   
   const config = PLACEMENT_CONFIGS[placementId] || { minHeight: '100px' };
 
-  // 1. مزامنة حالة الأمان العالمية
+  // 1. مزامنة حالة الأمان
   useEffect(() => {
-    const unsubscribe = adGuard.subscribeToSafety((safe) => {
-      setIsSafe(safe);
-    });
-    return () => unsubscribe();
+    return adGuard.subscribeToSafety(setIsSafe);
   }, []);
 
-  // 2. جلب الإعدادات (مرة واحدة)
+  // 2. جلب الإعدادات
   useEffect(() => {
     adGuard.getSettings().then(setSettings);
   }, []);
 
-  // 3. بناء عنصر الـ INS بمجرد توفر الإعدادات (لضمان وجوده في الـ DOM فوراً للزواحف)
+  // 3. بناء الـ INS بمجرد توفر الإعدادات (ثابت دائماً في الـ DOM)
   useEffect(() => {
     if (!settings || !containerRef.current) return;
     
@@ -48,7 +45,7 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
       return;
     }
 
-    // استخراج الخصائص الأساسية عبر Regex (أكثر أماناً من DOMParser وأسرع)
+    // استخراج الخصائص بأمان (Regex)
     const clientMatch = placement.code.match(/data-ad-client="([^"]+)"/);
     const slotMatch = placement.code.match(/data-ad-slot="([^"]+)"/);
     const formatMatch = placement.code.match(/data-ad-format="([^"]+)"/);
@@ -58,36 +55,36 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     const adFormat = formatMatch ? formatMatch[1] : 'auto';
 
     if (!adSlot) {
-      // إذا لم يكن كود أدسنس قياسي (مثلاً سكريبت خارجي)، نحقنه مباشرة
+      // كود غير قياسي (مثلاً سكريبت خارجي أو بنر صورة)
       containerRef.current.innerHTML = placement.code;
       return;
     }
 
-    // بناء الـ INS القياسي
+    // حقن وسم INS نظيف وقانوني
+    // ملاحظة: لا نستخدم opacity:0 بل نتركه كما هو، أدسنس سيتعامل معه كـ Unfilled حتى يتم استدعاء push
     containerRef.current.innerHTML = `
       <ins class="adsbygoogle"
-           style="display:block; min-height:${config.minHeight};"
+           style="display:block; min-height:${config.minHeight}; background: transparent;"
            data-ad-client="${adClient}"
            data-ad-slot="${adSlot}"
            data-ad-format="${adFormat}"
            data-full-width-responsive="true"></ins>
     `;
     
-    // إعادة ضبط حالة الـ Push عند تغيير المحتوى أو المسار
-    isPushedRef.current = false;
+    isPushed.current = false;
   }, [settings, placementId, currentPath]);
 
-  // 4. تفعيل الإعلان (Push) فقط عندما تصبح الحالة Safe
+  // 4. تفعيل الإعلان (The Push)
   useEffect(() => {
-    if (isSafe && !isPushedRef.current && containerRef.current) {
+    if (isSafe && !isPushed.current && containerRef.current) {
       const ins = containerRef.current.querySelector('ins.adsbygoogle');
       if (ins) {
         try {
           (window as any).adsbygoogle = (window as any).adsbygoogle || [];
           (window as any).adsbygoogle.push({});
-          isPushedRef.current = true;
+          isPushed.current = true;
         } catch (e) {
-          console.warn(`AdSense Push Failed [${placementId}]:`, e);
+          console.error(`AdSense Push Error [${placementId}]:`, e);
         }
       }
     }
@@ -95,12 +92,8 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
 
   return (
     <div 
-      className="ads-container-fixed mx-auto my-8 bg-transparent transition-opacity duration-700"
-      style={{ 
-        width: '100%',
-        minHeight: config.minHeight,
-        opacity: isSafe ? 1 : 0.05 // إبقاء شفافية خفيفة جداً بدلاً من الإخفاء الكامل لتحسين ثقة جوجل
-      }}
+      className="ads-container-fixed mx-auto my-8 bg-transparent"
+      style={{ width: '100%', minHeight: config.minHeight }}
     >
       <div 
         ref={containerRef} 
