@@ -5,7 +5,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>الجزيرة الإخبارية - نظام حماية متطور</title>
-    <!-- تم إبقاء Tailwind CDN للتطوير، سيختفي التنبيه في بيئة التشغيل المستقرة -->
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700;900&display=swap" rel="stylesheet">
     <style>
@@ -14,14 +13,14 @@
         background-color: #fcfcfd;
         scroll-behavior: smooth;
       }
-      /* تحسين ظهور الإعلانات */
       .adsbygoogle {
         margin: 0 auto !important;
         text-align: center !important;
+        background: transparent !important;
       }
-      /* منع انهيار الحاويات قبل تحميل الإعلانات */
-      ins.adsbygoogle[data-ad-status="unfilled"] {
-        display: none !important;
+      /* لضمان أن المتصفح يحافظ على المساحة أثناء التحميل */
+      .article-content p {
+        margin-bottom: 1.5rem;
       }
     </style>
     <script type="importmap">
