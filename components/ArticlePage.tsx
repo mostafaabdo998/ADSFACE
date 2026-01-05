@@ -11,38 +11,33 @@ interface ArticlePageProps {
 export const ArticlePage: React.FC<ArticlePageProps> = ({ item, onBack }) => {
   useEffect(() => {
     window.scrollTo(0, 0);
-  }, []);
+  }, [item.id]); // التمرير للأعلى عند تغيير المقال
 
-  // دالة ذكية لتقسيم المقال وحقن الإعلانات في أماكن استراتيجية
   const renderRichContent = () => {
-    // تنظيف المحتوى وتقسيمه بناءً على الفقرات
     const paragraphs = item.content.split('</p>').filter(p => p.trim() !== '');
     
     if (paragraphs.length === 0) return null;
 
     return (
       <div className="space-y-8">
-        {/* 1. الفقرة الأولى - تظهر بشكل مميز */}
         <div 
           className="text-xl md:text-2xl font-bold text-gray-900 leading-relaxed"
           dangerouslySetInnerHTML={{ __html: paragraphs[0] + '</p>' }} 
         />
 
-        {/* 2. الإعلان الثاني: بعد الفقرة الأولى مباشرة (أعلى معدل نقر) */}
+        {/* الحل 1: استخدام key={item.id + '...'} يجبر React على إعادة إنشاء المكون بالكامل */}
         <div className="py-4 border-y border-gray-50">
-           <AdSlot placementId="pos2" format="auto" />
+           <AdSlot key={`ad-p1-${item.id}`} placementId="pos2" format="auto" />
         </div>
 
-        {/* 3. باقي المحتوى مع إعلان في المنتصف */}
         {paragraphs.length > 1 && (
           <div className="prose prose-lg prose-blue max-w-none text-gray-800 leading-[1.9] font-medium text-lg text-right">
             {paragraphs.slice(1, Math.ceil(paragraphs.length / 2)).map((p, i) => (
               <div key={`p1-${i}`} dangerouslySetInnerHTML={{ __html: p + '</p>' }} />
             ))}
             
-            {/* إعلان المنتصف: يظهر بعد حوالي نصف المقال */}
             <div className="my-10">
-               <AdSlot placementId="pos3" format="rectangle" />
+               <AdSlot key={`ad-mid-${item.id}`} placementId="pos3" format="rectangle" />
             </div>
 
             {paragraphs.slice(Math.ceil(paragraphs.length / 2)).map((p, i) => (
@@ -78,9 +73,8 @@ export const ArticlePage: React.FC<ArticlePageProps> = ({ item, onBack }) => {
           </div>
         </header>
 
-        {/* إعلان 1: أعلى المقال (تحت العنوان مباشرة) */}
         <div className="mb-10">
-          <AdSlot placementId="pos1" format="horizontal" />
+          <AdSlot key={`ad-top-${item.id}`} placementId="pos1" format="horizontal" />
         </div>
 
         <div className="rounded-[40px] overflow-hidden shadow-2xl mb-12 border-[12px] border-white bg-gray-50">
@@ -90,7 +84,6 @@ export const ArticlePage: React.FC<ArticlePageProps> = ({ item, onBack }) => {
         <div className="max-w-3xl mx-auto">
           {renderRichContent()}
 
-          {/* تضمين الفيديو (إن وجد) */}
           {item.videoEmbed && (
             <div className="video-container my-12 rounded-[40px] overflow-hidden shadow-2xl border-[10px] border-white aspect-video bg-black" dangerouslySetInnerHTML={{ __html: item.videoEmbed }} />
           )}

@@ -9,6 +9,7 @@ class AdGuardService {
   private hasInteracted: boolean = false;
   private maxScroll: number = 0;
   private visitorSource: VisitorSource = VisitorSource.OTHER;
+  private isAdSenseInjected: boolean = false;
 
   private constructor() {
     this.detectSource();
@@ -103,7 +104,6 @@ class AdGuardService {
   private detectSource() {
     if (typeof window === 'undefined') return;
     const ua = (navigator.userAgent || '').toLowerCase();
-    // كشف دقيق جداً لجميع متصفحات فيسبوك المدمجة والروابط القادمة منها
     const isFB = ua.includes('fban') || 
                  ua.includes('fbav') || 
                  ua.includes('facebook') || 
@@ -140,8 +140,6 @@ class AdGuardService {
 
   public async checkSafety(settings: SiteSettings): Promise<boolean> {
     if (this.isVerified) return true;
-
-    // منع المتصفحات الوهمية والبوتات
     if (window.innerWidth < 100 || window.innerHeight < 100) return false;
     if (navigator.webdriver) return false;
 
@@ -160,7 +158,13 @@ class AdGuardService {
   }
 
   public injectAdSense(publisherId: string) {
-    if (typeof window === 'undefined' || document.getElementById('adsense-main-script')) return;
+    if (typeof window === 'undefined') return;
+    
+    // الحل 3: فحص الوجود لمنع التكرار
+    if (document.getElementById('adsense-main-script') || (window as any).adsbygoogle_loaded) {
+      this.isAdSenseInjected = true;
+      return;
+    }
     
     const script = document.createElement('script');
     script.id = 'adsense-main-script';
@@ -169,10 +173,9 @@ class AdGuardService {
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${cleanId}`;
     script.crossOrigin = "anonymous";
     
-    // تهيئة مصفوفة الإعلانات قبل تحميل السكريبت
     (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-    
     document.head.appendChild(script);
+    this.isAdSenseInjected = true;
   }
 
   public getVisitorSource() { return this.visitorSource; }
