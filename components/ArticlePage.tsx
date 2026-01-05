@@ -17,58 +17,63 @@ export const ArticlePage: React.FC<ArticlePageProps> = ({ item, onBack }) => {
     <div className="max-w-4xl mx-auto px-4 py-12">
       <button 
         onClick={onBack}
-        className="mb-8 flex items-center gap-2 text-gray-400 hover:text-blue-600 transition-colors font-bold text-sm"
+        className="mb-8 flex items-center gap-2 text-gray-400 hover:text-blue-600 transition-colors font-black text-xs uppercase tracking-widest"
       >
-        <span>&rarr;</span> العودة للرئيسية
+        <span>&larr;</span> العودة للرئيسية
       </button>
 
       <article>
-        <header className="mb-10 text-center">
-          <span className="inline-block px-4 py-1.5 bg-blue-50 text-blue-600 rounded-xl font-black uppercase tracking-widest text-[10px] mb-4">
+        <header className="mb-12 text-center">
+          <span className="inline-block px-4 py-1.5 bg-blue-50 text-blue-600 rounded-xl font-black uppercase tracking-widest text-[9px] mb-6">
             {item.category}
           </span>
-          <h1 className="text-4xl md:text-5xl font-black leading-tight text-gray-900 mb-6">
+          <h1 className="text-3xl md:text-5xl font-black leading-tight text-gray-900 mb-8 px-4">
             {item.title}
           </h1>
-          <div className="flex items-center justify-center gap-6 text-gray-400 text-xs font-bold">
+          <div className="flex items-center justify-center gap-6 text-gray-400 text-[10px] font-black uppercase tracking-tighter">
             <span>{item.date}</span>
-            <span>•</span>
-            <span className="flex items-center gap-1">قراءة في 3 دقائق</span>
+            <span className="w-1.5 h-1.5 bg-gray-200 rounded-full"></span>
+            <span>بواسطة فريق التحرير</span>
           </div>
         </header>
 
         {/* Dynamic Ad Placement 1: Top */}
-        <AdSlot placementId="pos1" format="horizontal" />
-
-        <div className="rounded-[40px] overflow-hidden shadow-2xl mb-12 border-8 border-white bg-gray-100">
-          <img src={item.image} alt={item.title} className="w-full min-h-[400px] max-h-[600px] object-cover" />
+        <div className="ad-section-top">
+          <AdSlot placementId="pos1" format="horizontal" />
         </div>
 
-        <div className="prose prose-lg max-w-none text-gray-800 leading-[1.8] space-y-8 font-serif">
-          <p className="text-2xl font-bold text-gray-900 leading-relaxed border-r-4 border-blue-600 pr-8 py-2 mb-12 bg-blue-50/20 rounded-l-2xl">
+        <div className="rounded-[40px] overflow-hidden shadow-2xl mb-12 border-[12px] border-white bg-gray-50">
+          <img src={item.image} alt={item.title} className="w-full min-h-[300px] max-h-[600px] object-cover" />
+        </div>
+
+        <div className="max-w-3xl mx-auto">
+          <p className="text-xl md:text-2xl font-bold text-gray-900 leading-relaxed border-r-8 border-blue-600 pr-8 py-4 mb-12 bg-blue-50/30 rounded-l-[32px]">
             {item.excerpt}
           </p>
           
-          {/* HTML CONTENT RENDERING */}
           <div 
-            className="article-content whitespace-pre-wrap text-lg"
+            className="article-content prose prose-lg prose-blue max-w-none text-gray-800 leading-[1.9] space-y-8 font-medium text-lg text-right"
             dangerouslySetInnerHTML={{ __html: item.content }}
           />
 
+          {/* Dynamic Ad Placement 2: Middle */}
+          <div className="ad-section-middle py-8">
+            <AdSlot placementId="pos2" format="rectangle" />
+          </div>
+
           {/* VIDEO EMBED */}
           {item.videoEmbed && (
-            <div className="video-container my-12 rounded-[32px] overflow-hidden shadow-lg border-4 border-white aspect-video" dangerouslySetInnerHTML={{ __html: item.videoEmbed }} />
+            <div className="video-container my-12 rounded-[40px] overflow-hidden shadow-2xl border-[10px] border-white aspect-video bg-black" dangerouslySetInnerHTML={{ __html: item.videoEmbed }} />
           )}
 
-          {/* Dynamic Ad Placement 2: Middle */}
-          <AdSlot placementId="pos2" format="rectangle" />
-
-          <blockquote className="border-r-8 border-blue-600 bg-blue-50/50 p-10 my-12 rounded-3xl italic font-bold text-2xl text-blue-900 shadow-sm">
+          <blockquote className="border-r-[10px] border-blue-600 bg-blue-50/40 p-12 my-12 rounded-[40px] italic font-black text-2xl text-blue-900 shadow-inner">
             "نحن نلتزم بتقديم الخبر بمهنية عالية ومصداقية تامة في جميع منصاتنا الرقمية."
           </blockquote>
 
           {/* Dynamic Ad Placement 3: Bottom */}
-          <AdSlot placementId="pos3" format="auto" />
+          <div className="ad-section-bottom pt-8">
+            <AdSlot placementId="pos3" format="auto" />
+          </div>
         </div>
       </article>
     </div>

@@ -16,6 +16,7 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
   const containerRef = useRef<HTMLDivElement>(null);
   const source = adGuard.getVisitorSource();
 
+  // 1. تحميل الإعدادات
   useEffect(() => {
     let active = true;
     adGuard.getSettings().then(data => {
@@ -24,6 +25,7 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
     return () => { active = false; };
   }, []);
 
+  // 2. نظام التحقق من الأمان
   useEffect(() => {
     if (!settings) return;
 
@@ -41,13 +43,15 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
     return () => clearInterval(safetyInterval);
   }, [settings]);
 
+  // 3. التحكم في الماسك (Ad Masking)
   useEffect(() => {
     if (isReady && showMask) {
-      const maskDuration = source === VisitorSource.OTHER ? 1500 : 4500;
+      // نطبق تأخير زمني بناءً على مصدر الزيارة
+      const maskDuration = source === VisitorSource.OTHER ? 2000 : 5000;
       const timer = setTimeout(() => {
         setShowMask(false);
-        // ننتظر قليلاً بعد إخفاء الماسك لضمان أن الحاوية أصبحت مرئية تماماً للمتصفح
-        setTimeout(() => renderAdNow(), 100);
+        // ننتظر حتى تنتهي حركة الاختفاء البصري قبل طلب الإعلان
+        setTimeout(() => renderAdNow(), 300);
       }, maskDuration);
       return () => clearTimeout(timer);
     }
@@ -57,34 +61,35 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
     if (!containerRef.current || !settings) return;
     const currentContainer = containerRef.current;
     
-    // منع تكرار الحقن في نفس الحاوية
-    if (currentContainer.querySelector('.adsbygoogle') || currentContainer.innerHTML !== '') return;
+    // منع التكرار
+    if (currentContainer.innerHTML !== '') return;
 
     const placement = settings.customAdPlacements?.find(p => p.id === placementId);
     const hasCustomCode = !!(placement && placement.isActive && placement.code?.trim() !== '');
 
     if (hasCustomCode && placement) {
-      // حقن الكود المخصص
-      const tempDiv = document.createElement('div');
-      tempDiv['className'] = 'custom-ad-wrapper';
-      tempDiv.style.width = '100%';
-      tempDiv.innerHTML = placement.code;
-      currentContainer.appendChild(tempDiv);
+      // حالة الكود المخصص
+      const adWrapper = document.createElement('div');
+      adWrapper.style.width = '100%';
+      adWrapper.style.display = 'flex';
+      adWrapper.style.justifyContent = 'center';
+      adWrapper.innerHTML = placement.code;
+      currentContainer.appendChild(adWrapper);
 
-      // تفعيل أدسنس إذا كان موجوداً في الكود المخصص
       if (placement.code.includes('adsbygoogle')) {
         try {
-          ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-        } catch (e) { console.warn("AdSense push failed (custom)", e); }
+          (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+          (window as any).adsbygoogle.push({});
+        } catch (e) { console.warn("AdSense Push Failed (Custom)", e); }
       }
     } else {
-      // حقن الوحدة الافتراضية
+      // حالة الوحدة التلقائية
       const ins = document.createElement('ins');
       ins.className = 'adsbygoogle';
       ins.style.display = 'block';
       ins.style.width = '100%';
-      ins.style.minWidth = '250px'; // ضمان وجود عرض أدنى
-      ins.style.minHeight = '150px';
+      ins.style.minWidth = '250px';
+      ins.style.minHeight = '250px'; // حجز مساحة لضمان عدم وجود Width=0
       ins.setAttribute('data-ad-client', settings.adClient);
       ins.setAttribute('data-ad-slot', adSlot || settings.adSlotMain);
       ins.setAttribute('data-ad-format', format);
@@ -93,34 +98,39 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
       currentContainer.appendChild(ins);
       
       try {
-        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-      } catch (e) { console.warn("AdSense push failed (default)", e); }
+        (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+        (window as any).adsbygoogle.push({});
+      } catch (e) { console.warn("AdSense Push Failed (Default)", e); }
     }
   };
 
   return (
-    <div className="my-10 relative min-h-[200px] w-full bg-gray-50/5 flex items-center justify-center border border-dashed border-gray-100 rounded-[32px] overflow-hidden">
+    <div className="my-12 relative min-h-[280px] w-full bg-gray-50/30 flex items-center justify-center border border-dashed border-gray-200 rounded-[32px] overflow-hidden transition-all duration-500">
       {!isReady && (
-        <div className="p-8 text-center flex flex-col items-center gap-3">
-           <div className="w-5 h-5 border-2 border-blue-600/10 border-t-blue-600 rounded-full animate-spin"></div>
-           <p className="text-[9px] font-black text-gray-300 uppercase tracking-widest">جاري تأمين الاتصال...</p>
+        <div className="p-8 text-center flex flex-col items-center gap-4 animate-pulse">
+           <div className="w-6 h-6 border-2 border-blue-600/10 border-t-blue-600 rounded-full animate-spin"></div>
+           <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em]">فحص أمان الإعلانات...</p>
         </div>
       )}
       
-      {/* الحاوية دائماً موجودة في الـ DOM لتجنب width=0 */}
+      {/* الحاوية - نستخدم opacity بدلاً من h-0 لضمان أن المتصفح يرى العرض (Width) */}
       <div 
         ref={containerRef} 
-        className={`w-full flex justify-center ${showMask ? 'invisible h-0' : 'visible h-auto'}`} 
+        className={`w-full flex justify-center transition-all duration-700 ${showMask ? 'opacity-0 scale-95' : 'opacity-100 scale-100'}`} 
       />
       
+      {/* طبقة الحماية (الماسك) */}
       {isReady && showMask && (
-        <div className="absolute inset-0 bg-white/95 backdrop-blur-sm z-50 flex flex-col items-center justify-center transition-opacity duration-700">
-           <div className="bg-blue-600/5 px-5 py-2.5 rounded-full border border-blue-100 shadow-sm flex items-center gap-3">
-              <span className="relative flex h-2 w-2">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-600"></span>
-              </span>
-              <span className="text-[10px] font-black text-blue-600 uppercase tracking-tighter">حماية فيسبوك نشطة • AdGuard</span>
+        <div className="absolute inset-0 bg-white/95 backdrop-blur-md z-50 flex flex-col items-center justify-center transition-opacity duration-1000">
+           <div className="flex flex-col items-center gap-4">
+              <div className="bg-blue-600/5 px-6 py-3 rounded-full border border-blue-100 shadow-sm flex items-center gap-3">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-600"></span>
+                </span>
+                <span className="text-[11px] font-black text-blue-600 uppercase tracking-widest">إعلان محمي • AdGuard Active</span>
+              </div>
+              <p className="text-[9px] text-gray-400 font-bold">جاري التحقق من سلامة المحتوى الإعلاني...</p>
            </div>
         </div>
       )}
