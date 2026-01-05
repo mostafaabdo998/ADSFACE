@@ -4,18 +4,16 @@ import { adGuard } from '../services/AdGuardService';
 import { SiteSettings } from '../types';
 
 interface AdSlotProps {
-  placementId?: string; 
-  adSlot?: string;      
+  placementId: string; 
   format?: 'auto' | 'fluid' | 'rectangle' | 'horizontal';      
 }
 
-export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'auto' }) => {
+export const AdSlot: React.FC<AdSlotProps> = ({ placementId, format = 'auto' }) => {
   const [isReady, setIsReady] = useState(false);
-  const [showMask, setShowMask] = useState(true);
+  const [showAd, setShowAd] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pushedRef = useRef(false);
-  const retryRef = useRef<number>(0);
 
   useEffect(() => {
     let active = true;
@@ -39,101 +37,50 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
   }, [settings]);
 
   useEffect(() => {
-    if (isReady && showMask) {
-      const timer = setTimeout(() => {
-        setShowMask(false);
-      }, adGuard.getVisitorSource() === 'other' ? 400 : 2800);
+    if (isReady) {
+      const waitTime = adGuard.getVisitorSource() === 'other' ? 100 : 2000;
+      const timer = setTimeout(() => setShowAd(true), waitTime);
       return () => clearTimeout(timer);
     }
-  }, [isReady, showMask]);
+  }, [isReady]);
 
-  // نظام مراقب الثبات
   useEffect(() => {
-    if (!showMask && isReady && settings && !pushedRef.current) {
-      const monitorLayout = () => {
-        const container = containerRef.current;
-        if (!container) return;
-
-        // التحقق من أن الحاوية لها عرض حقيقي وغير مخفية
-        const width = container.offsetWidth;
-        if (width > 0) {
-          // انتظار استقرار نهائي (Final Paint)
-          setTimeout(() => {
-            if (container.offsetWidth > 0) renderAd();
-          }, 150);
-        } else if (retryRef.current < 50) {
-          retryRef.current++;
-          requestAnimationFrame(monitorLayout);
+    if (showAd && settings && !pushedRef.current) {
+      const checkAndRender = () => {
+        if (containerRef.current && containerRef.current.offsetWidth > 0) {
+          renderAd();
+        } else {
+          requestAnimationFrame(checkAndRender);
         }
       };
-
-      monitorLayout();
+      checkAndRender();
     }
-  }, [showMask, isReady, settings]);
+  }, [showAd, settings]);
 
   const renderAd = () => {
     if (!containerRef.current || !settings || pushedRef.current) return;
     const currentContainer = containerRef.current;
-
+    
     const placement = settings.customAdPlacements?.find(p => p.id === placementId);
-    const hasCustomCode = !!(placement && placement.isActive && placement.code?.trim() !== '');
+    if (!placement || !placement.isActive) return;
 
-    // تنظيف الحاوية لضمان عدم وجود بقايا من رندر سابق (مهم جداً في React)
     currentContainer.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.style.width = '100%';
+    wrapper.innerHTML = placement.code;
+    currentContainer.appendChild(wrapper);
 
-    if (hasCustomCode && placement) {
-      const wrapper = document.createElement('div');
-      wrapper.style.width = '100%';
-      wrapper.innerHTML = placement.code;
-      currentContainer.appendChild(wrapper);
-
-      if (placement.code.includes('adsbygoogle')) {
-        executePush();
-      }
-    } else {
-      const ins = document.createElement('ins');
-      ins.className = 'adsbygoogle';
-      ins.style.display = 'block';
-      ins.style.width = '100%';
-      ins.style.minHeight = '100px';
-      ins.style.minWidth = '250px';
-      
-      ins.setAttribute('data-ad-client', settings.adClient.trim());
-      ins.setAttribute('data-ad-slot', (adSlot || settings.adSlotMain).trim());
-      ins.setAttribute('data-ad-format', format);
-      ins.setAttribute('data-full-width-responsive', 'true');
-      
-      currentContainer.appendChild(ins);
-      executePush();
-    }
-  };
-
-  const executePush = () => {
-    try {
-      const adsbygoogle = (window as any).adsbygoogle || [];
-      adsbygoogle.push({});
-      pushedRef.current = true;
-    } catch (e) {
-      console.error("AdSense Push Failure:", e);
+    if (placement.code.includes('adsbygoogle')) {
+      try {
+        ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+        pushedRef.current = true;
+      } catch (e) {}
     }
   };
 
   return (
-    <div className="my-8 w-full flex flex-col items-center justify-center overflow-visible">
-      <div 
-        className={`w-full max-w-full transition-opacity duration-700 ${showMask ? 'opacity-0 h-0 overflow-hidden' : 'opacity-100 min-h-[100px]'}`}
-      >
-        <div ref={containerRef} className="w-full flex justify-center items-center" />
-      </div>
-      
-      {showMask && (
-        <div className="w-full h-24 flex flex-col items-center justify-center bg-gray-50/20 rounded-[32px] border border-dashed border-gray-100/50">
-           <div className="flex flex-col items-center gap-2">
-              <div className="w-3 h-3 border border-blue-600/10 border-t-blue-500 rounded-full animate-spin"></div>
-              <p className="text-[7px] font-black text-gray-300 uppercase tracking-[0.2em]">Shielding Active</p>
-           </div>
-        </div>
-      )}
+    <div className={`w-full flex justify-center transition-all duration-1000 ${showAd ? 'opacity-100 my-4 md:my-8 min-h-[100px]' : 'opacity-0 h-0 overflow-hidden'}`}>
+      <div ref={containerRef} className="w-full flex justify-center items-center" />
     </div>
   );
 };
