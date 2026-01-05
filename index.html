@@ -13,14 +13,20 @@
         background-color: #fcfcfd;
         scroll-behavior: smooth;
       }
+      /* تنسيقات أدسنس العالمية لضمان عدم حدوث مشاكل في العرض */
       .adsbygoogle {
+        display: block !important;
         margin: 0 auto !important;
         text-align: center !important;
-        background: transparent !important;
       }
-      /* لضمان أن المتصفح يحافظ على المساحة أثناء التحميل */
+      /* منع انهيار الحاويات أثناء التحميل */
+      ins.adsbygoogle[data-ad-status="unfilled"] {
+        display: none !important;
+      }
+      /* تحسين تباعد المحتوى */
       .article-content p {
         margin-bottom: 1.5rem;
+        line-height: 1.9;
       }
     </style>
     <script type="importmap">
