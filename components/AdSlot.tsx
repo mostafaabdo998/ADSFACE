@@ -8,27 +8,39 @@ interface AdSlotProps {
   currentPath?: string;
 }
 
+// تعريف الأحجام القياسية لكل موضع لضمان قبول أدسنس
+const PLACEMENT_CONFIGS: Record<string, { minHeight: string, width: string }> = {
+  'pos_top': { minHeight: '90px', width: '100%' },
+  'pos_after_title': { minHeight: '250px', width: '100%' },
+  'pos_mid_1': { minHeight: '280px', width: '100%' },
+  'pos_mid_2': { minHeight: '280px', width: '100%' },
+  'pos_bottom': { minHeight: '250px', width: '100%' },
+  'pos_sidebar_main': { minHeight: '600px', width: '100%' }
+};
+
 export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [isSafe, setIsSafe] = useState(false);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const isInjectedRef = useRef(false);
+  
+  const config = PLACEMENT_CONFIGS[placementId] || { minHeight: '100px', width: '100%' };
 
-  // 1. تصفير الحالة عند تغيير الصفحة
+  // تصفير عند تغيير المسار
   useEffect(() => {
     setIsSafe(false);
     isInjectedRef.current = false;
     if (containerRef.current) containerRef.current.innerHTML = '';
   }, [currentPath]);
 
-  // 2. جلب الإعدادات
+  // جلب الإعدادات
   useEffect(() => {
     adGuard.getSettings().then(data => {
       if (data) setSettings(data);
     });
   }, []);
 
-  // 3. محرك فحص الأمان
+  // محرك الأمان
   useEffect(() => {
     if (!settings || isSafe) return;
 
@@ -39,89 +51,82 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
         if (settings.adClient) adGuard.injectAdSense(settings.adClient);
         clearInterval(safetyInterval);
       }
-    }, 600);
+    }, 500);
 
     return () => clearInterval(safetyInterval);
   }, [settings, isSafe]);
 
-  // 4. عملية الحقن الاحترافية
+  // الحقن التقني
   useEffect(() => {
     if (isSafe && settings && !isInjectedRef.current && containerRef.current) {
-      // ننتظر قليلاً حتى ينتهي الـ CSS Transition ويصبح العنصر مرئياً بوضوح
-      const timer = setTimeout(() => {
-        handleExpertInjection();
-      }, 500);
-      return () => clearTimeout(timer);
+      // حقن فوري بدون تأخير طويل لضمان استقرار الـ DOM
+      handleStaticInjection();
     }
   }, [isSafe, settings]);
 
-  const handleExpertInjection = () => {
+  const handleStaticInjection = () => {
     if (!containerRef.current || isInjectedRef.current) return;
 
     const placement = settings?.customAdPlacements?.find(p => p.id === placementId);
     if (!placement || !placement.isActive || !placement.code?.trim()) return;
 
     isInjectedRef.current = true;
-    
-    // إنشاء حاوية نظيفة
     const container = containerRef.current;
-    container.innerHTML = '';
-
-    // تحليل الكود لاستخراج الـ attributes من وسم ins
-    // نستخدم DOMParser لتجنب مشاكل الـ innerHTML
+    
+    // استخراج الخصائص من كود أدسنس
     const parser = new DOMParser();
     const doc = parser.parseFromString(placement.code, 'text/html');
     const originalIns = doc.querySelector('ins.adsbygoogle');
 
-    if (!originalIns) {
-      // إذا لم يجد وسم ins، نقوم بحقن الكود كما هو كملاذ أخير
-      container.innerHTML = placement.code;
-    } else {
-      // بناء وسم ins جديد برمجياً لضمان تنفيذ نظيف
+    if (originalIns) {
       const newIns = document.createElement('ins');
       newIns.className = 'adsbygoogle';
       
-      // نقل كافة الخصائص (data-ad-client, data-ad-slot, etc)
+      // نقل الخصائص
       Array.from(originalIns.attributes).forEach(attr => {
-        newIns.setAttribute(attr.name, attr.value);
+        if (attr.name !== 'style') newIns.setAttribute(attr.name, attr.value);
       });
 
-      // إجبار التنسيق ليكون مرئياً
+      // فرض الحجم الثابت برمجياً (حاسم جداً)
       newIns.style.display = 'block';
-      newIns.style.minHeight = '100px';
       newIns.style.width = '100%';
+      newIns.style.height = config.minHeight;
+      newIns.style.minHeight = config.minHeight;
+      newIns.style.overflow = 'hidden';
 
+      container.innerHTML = '';
       container.appendChild(newIns);
-    }
 
-    // الخطوة الحاسمة: استدعاء محرك جوجل
-    try {
-      (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-      (window as any).adsbygoogle.push({});
-    } catch (e) {
-      console.warn("AdSense Engine Busy - Retrying...");
-      setTimeout(() => {
-        try { (window as any).adsbygoogle.push({}); } catch(i) {}
-      }, 1000);
+      // طلب الإعلان
+      try {
+        (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+        (window as any).adsbygoogle.push({});
+      } catch (e) {
+        console.error("AdSense Push Error", e);
+      }
+    } else {
+      // إذا كان الكود ليس وسم ins (مثل سكريبت خارجي)
+      container.innerHTML = placement.code;
     }
   };
 
   return (
     <div 
-      className="ad-slot-wrapper w-full overflow-hidden transition-all duration-1000 ease-in-out"
+      className="ads-container-fixed mx-auto my-6"
       style={{ 
-        maxHeight: isSafe ? '1000px' : '0px',
+        width: config.width,
+        minHeight: config.minHeight,
+        visibility: isSafe ? 'visible' : 'hidden',
         opacity: isSafe ? 1 : 0,
-        margin: isSafe ? '2rem 0' : '0'
+        transition: 'opacity 0.5s ease-in'
       }}
     >
       <div 
         ref={containerRef} 
-        className="w-full flex justify-center items-center bg-gray-50/30 rounded-2xl"
-        style={{ minHeight: isSafe ? '100px' : '0px' }}
+        style={{ width: '100%', minHeight: config.minHeight }}
       />
       {isSafe && (
-        <div className="text-[8px] text-gray-200 text-center mt-1 uppercase tracking-widest font-bold">
+        <div className="text-[7px] text-gray-300 text-center mt-1 uppercase tracking-widest opacity-50">
           Advertisement
         </div>
       )}

@@ -13,21 +13,22 @@
         background-color: #fcfcfd;
         scroll-behavior: smooth;
       }
-      /* ضمان وجود عرض دائم للحاويات */
-      .ad-slot-boundary, .adsense-inject-point, .adsense-wrapper {
-        width: 100% !important;
-        min-width: 100% !important;
+      /* تنسيقات حاسمة لأدسنس */
+      .ads-container-fixed {
         display: block !important;
+        width: 100% !important;
+        text-align: center !important;
+        overflow: hidden !important;
+        clear: both !important;
       }
       .adsbygoogle {
         display: block !important;
+        width: 100% !important;
         margin: 0 auto !important;
-        text-align: center !important;
-        min-width: 100px !important;
-        min-height: 50px !important;
       }
-      ins.adsbygoogle[data-ad-status="unfilled"] {
-        display: none !important;
+      /* منع إخفاء الإعلانات بواسطة ريأكت قبل التحميل */
+      ins.adsbygoogle {
+        text-decoration: none !important;
       }
       .article-content p {
         margin-bottom: 1.5rem;
