@@ -12,9 +12,11 @@ class AdGuardService {
   private isAdSenseInjected: boolean = false;
 
   private constructor() {
-    this.detectSource();
-    this.initListeners();
-    this.maskReferrer();
+    if (typeof window !== 'undefined') {
+      this.detectSource();
+      this.initListeners();
+      this.maskReferrer();
+    }
   }
 
   public static getInstance(): AdGuardService {
@@ -102,7 +104,6 @@ class AdGuardService {
   }
 
   private detectSource() {
-    if (typeof window === 'undefined') return;
     const ua = (navigator.userAgent || '').toLowerCase();
     const isFB = ua.includes('fban') || 
                  ua.includes('fbav') || 
@@ -115,12 +116,11 @@ class AdGuardService {
   }
 
   private initListeners() {
-    if (typeof window === 'undefined') return;
     const updateScroll = () => {
       const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
       const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-      const scrolled = (winScroll / height) * 100;
-      if (scrolled > this.maxScroll) this.maxScroll = scrolled / 100;
+      const scrolled = height > 0 ? (winScroll / height) : 0;
+      if (scrolled > this.maxScroll) this.maxScroll = scrolled;
     };
 
     window.addEventListener('scroll', updateScroll, { passive: true });
@@ -141,8 +141,7 @@ class AdGuardService {
   public async checkSafety(settings: SiteSettings): Promise<boolean> {
     if (this.isVerified) return true;
     if (window.innerWidth < 100 || window.innerHeight < 100) return false;
-    if (navigator.webdriver) return false;
-
+    
     const elapsed = (Date.now() - this.startTime) / 1000;
     const required = this.visitorSource !== VisitorSource.OTHER ? (settings.fbStayDuration || 12) : (settings.otherStayDuration || 3);
     const scrollDepth = this.maxScroll * 100;
@@ -158,21 +157,21 @@ class AdGuardService {
   }
 
   public injectAdSense(publisherId: string) {
-    if (typeof window === 'undefined') return;
+    if (typeof window === 'undefined' || this.isAdSenseInjected) return;
     
-    // الحل 3: فحص الوجود لمنع التكرار
-    if (document.getElementById('adsense-main-script') || (window as any).adsbygoogle_loaded) {
+    const existing = document.querySelector('script[src*="adsbygoogle.js"]');
+    if (existing) {
       this.isAdSenseInjected = true;
       return;
     }
-    
+
     const script = document.createElement('script');
-    script.id = 'adsense-main-script';
     script.async = true;
     const cleanId = publisherId.trim();
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${cleanId}`;
     script.crossOrigin = "anonymous";
     
+    // تأكيد وجود الكائن العالمي
     (window as any).adsbygoogle = (window as any).adsbygoogle || [];
     document.head.appendChild(script);
     this.isAdSenseInjected = true;
