@@ -4,9 +4,9 @@ import { adGuard } from '../services/AdGuardService';
 import { VisitorSource, SiteSettings } from '../types';
 
 interface AdSlotProps {
-  placementId?: string;
-  adSlot?: string;
-  format?: string;
+  placementId?: string; // لربط الإعلان بمكان محدد في لوحة التحكم (pos1, pos2, pos3)
+  adSlot?: string;      // الـ Slot ID الافتراضي
+  format?: string;      // تنسيق الإعلان (auto, rectangle, horizontal)
 }
 
 export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'auto' }) => {
@@ -14,16 +14,19 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
   const [showMask, setShowMask] = useState(true);
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
   const source = adGuard.getVisitorSource();
 
+  // 1. تحميل الإعدادات من قاعدة البيانات
   useEffect(() => {
     let active = true;
     adGuard.getSettings().then(data => {
       if (active && data) setSettings(data);
-    }).catch(e => console.error("AdSlot: Settings error", e));
+    });
     return () => { active = false; };
   }, []);
 
+  // 2. نظام التحقق من الأمان (Safe-Check Algorithm)
   useEffect(() => {
     if (!settings) return;
 
@@ -41,79 +44,97 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, adSlot, format = 'a
     return () => clearInterval(safetyInterval);
   }, [settings]);
 
+  // 3. التحكم في طبقة التمويه (Temporary Masking)
   useEffect(() => {
     if (isReady && showMask) {
-      const maskDuration = source === VisitorSource.OTHER ? 1500 : 3500;
+      // زوار فيسبوك يتم تأخيرهم أكثر لمنع النقرات العارضة
+      const maskDuration = source === VisitorSource.OTHER ? 2000 : 5000;
       const timer = setTimeout(() => setShowMask(false), maskDuration);
       return () => clearTimeout(timer);
     }
   }, [isReady, showMask, source]);
 
+  // 4. معالجة الحقن الفعلي للإعلان مع حل مشكلة availableWidth=0
   useEffect(() => {
-    if (isReady && containerRef.current && settings) {
-      const triggerAd = () => {
-        if (!containerRef.current) return;
-        
-        // التحقق من أن العرض أكبر من 0 لمنع خطأ availableWidth=0
-        if (containerRef.current.offsetWidth === 0) {
-          setTimeout(triggerAd, 200);
-          return;
+    if (!isReady || !containerRef.current || !settings) return;
+
+    const currentContainer = containerRef.current;
+
+    // مراقبة حجم العنصر قبل الحقن
+    observerRef.current = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        const width = entry.contentRect.width;
+        // لا نحقن الإعلان إلا إذا كان العرض أكبر من 250 بكسل والحاوية فارغة
+        if (width > 240 && currentContainer.innerHTML === '') {
+          renderAdLogic();
+          observerRef.current?.unobserve(currentContainer);
         }
+      }
+    });
 
-        containerRef.current.innerHTML = ''; 
-        const placement = settings.customAdPlacements?.find(p => p.id === placementId);
-        const hasCustomCode = !!(placement && placement.isActive && placement.code?.trim() !== '');
+    observerRef.current.observe(currentContainer);
 
-        if (hasCustomCode && placement) {
-          const cleanCode = placement.code?.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "") || "";
-          containerRef.current.innerHTML = cleanCode;
-          
-          if (placement.code?.includes('adsbygoogle')) {
-            try {
-              ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
-            } catch (e) {
-              console.warn("AdSense custom push error:", e);
-            }
-          }
-        } else {
-          const ins = document.createElement('ins');
-          ins.className = 'adsbygoogle';
-          ins.style.display = 'block';
-          ins.style.width = '100%'; // إجبار العرض على 100%
-          ins.style.minWidth = '250px'; // حد أدنى للعرض
-          ins.style.minHeight = '100px';
-          ins.setAttribute('data-ad-client', settings.adClient);
-          ins.setAttribute('data-ad-slot', adSlot || settings.adSlotMain);
-          ins.setAttribute('data-ad-format', format);
-          ins.setAttribute('data-full-width-responsive', 'true');
-          containerRef.current.appendChild(ins);
-          
+    const renderAdLogic = () => {
+      const placement = settings.customAdPlacements?.find(p => p.id === placementId);
+      const hasCustomCode = !!(placement && placement.isActive && placement.code?.trim() !== '');
+
+      if (hasCustomCode && placement) {
+        // إذا وجد كود مخصص في لوحة التحكم لهذا المكان
+        const cleanCode = placement.code?.replace(/<script\b[^>]*>([\s\S]*?)<\/script>/gim, "") || "";
+        currentContainer.innerHTML = cleanCode;
+        
+        if (placement.code?.includes('adsbygoogle')) {
           try {
             ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
           } catch (e) {
-            console.warn("AdSense default push error:", e);
+            console.warn("Manual push error:", e);
           }
         }
-      };
+      } else {
+        // الإعلان الافتراضي بنظام الـ Dynamic Generation
+        const ins = document.createElement('ins');
+        ins.className = 'adsbygoogle';
+        ins.style.display = 'block';
+        ins.style.width = '100%';
+        ins.style.minHeight = '100px';
+        ins.setAttribute('data-ad-client', settings.adClient);
+        ins.setAttribute('data-ad-slot', adSlot || settings.adSlotMain);
+        ins.setAttribute('data-ad-format', format);
+        ins.setAttribute('data-full-width-responsive', 'true');
+        currentContainer.appendChild(ins);
+        
+        try {
+          ((window as any).adsbygoogle = (window as any).adsbygoogle || []).push({});
+        } catch (e) {
+          console.warn("Default push error:", e);
+        }
+      }
+    };
 
-      // استخدام requestAnimationFrame لضمان أن المتصفح قد انتهى من حساب الأبعاد
-      requestAnimationFrame(() => {
-        setTimeout(triggerAd, 150);
-      });
-    }
+    return () => {
+      if (observerRef.current) {
+        observerRef.current.disconnect();
+      }
+    };
   }, [isReady, settings, adSlot, format, placementId]);
 
   return (
-    <div className="my-10 relative min-h-[120px] w-full bg-gray-50/50 flex items-center justify-center border border-dashed border-gray-100 overflow-hidden rounded-[24px]">
+    <div className="my-12 relative min-h-[150px] w-full bg-gray-50/20 flex items-center justify-center border border-dashed border-gray-100 overflow-hidden rounded-[32px]">
       {!isReady && (
-        <div className="text-gray-300 text-[10px] p-6 text-center flex flex-col items-center gap-2 font-black uppercase tracking-widest">
-           <div className="w-4 h-4 border border-blue-600/20 border-t-blue-600 rounded-full animate-spin"></div>
-           <p>جاري فحص الأمان...</p>
+        <div className="p-8 text-center flex flex-col items-center gap-3">
+           <div className="w-5 h-5 border-2 border-blue-600/10 border-t-blue-600 rounded-full animate-spin"></div>
+           <p className="text-[10px] font-black text-gray-300 uppercase tracking-[0.2em]">جاري فحص جودة الاتصال...</p>
         </div>
       )}
+      
       <div ref={containerRef} className="w-full flex justify-center" />
+      
       {isReady && showMask && (
-        <div className="ad-mask bg-white/70 backdrop-blur-[1px] transition-opacity duration-500"></div>
+        <div className="ad-mask transition-opacity duration-1000 ease-in-out">
+           <div className="bg-white/90 px-4 py-2 rounded-full border border-gray-100 shadow-sm">
+             <span className="text-[9px] font-black text-gray-400">إعلان محمي بواسطة AdGuard</span>
+           </div>
+        </div>
       )}
     </div>
   );

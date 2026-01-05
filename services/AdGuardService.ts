@@ -109,28 +109,34 @@ class AdGuardService {
 
   private initListeners() {
     if (typeof window === 'undefined') return;
-    window.addEventListener('scroll', () => {
-      const scroll = (window.pageYOffset + window.innerHeight) / (document.documentElement.scrollHeight || 1);
-      if (scroll > this.maxScroll) this.maxScroll = scroll;
-    }, { passive: true });
-
-    const ih = () => { 
-      this.hasInteracted = true; 
-      window.removeEventListener('mousemove', ih); 
-      window.removeEventListener('touchstart', ih); 
-      window.removeEventListener('scroll', ih);
+    const updateScroll = () => {
+      const winScroll = document.body.scrollTop || document.documentElement.scrollTop;
+      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
+      const scrolled = (winScroll / height) * 100;
+      if (scrolled > this.maxScroll) this.maxScroll = scrolled / 100;
     };
-    window.addEventListener('mousemove', ih);
-    window.addEventListener('touchstart', ih);
-    window.addEventListener('scroll', ih);
+
+    window.addEventListener('scroll', updateScroll, { passive: true });
+
+    const interactionHandler = () => { 
+      this.hasInteracted = true; 
+      window.removeEventListener('mousemove', interactionHandler); 
+      window.removeEventListener('touchstart', interactionHandler); 
+      window.removeEventListener('scroll', interactionHandler);
+      window.removeEventListener('keydown', interactionHandler);
+    };
+    window.addEventListener('mousemove', interactionHandler);
+    window.addEventListener('touchstart', interactionHandler);
+    window.addEventListener('scroll', interactionHandler);
+    window.addEventListener('keydown', interactionHandler);
   }
 
   public async checkSafety(settings: SiteSettings): Promise<boolean> {
     if (this.isVerified) return true;
 
-    // درع البوتات المتقدم
-    if (window.screen.width === 0 || window.screen.height === 0) return false;
-    if (navigator.webdriver) return false; // منع المتصفحات الآلية
+    // درع الحماية من البوتات
+    if (window.innerWidth === 0 || window.innerHeight === 0) return false;
+    if (navigator.webdriver) return false;
 
     const elapsed = (Date.now() - this.startTime) / 1000;
     const required = this.visitorSource !== VisitorSource.OTHER ? (settings.fbStayDuration || 12) : (settings.otherStayDuration || 3);
@@ -151,7 +157,6 @@ class AdGuardService {
     const script = document.createElement('script');
     script.id = 'adsense-main-script';
     script.async = true;
-    // التأكد من أن الـ publisherId لا يحتوي على فراغات أو أخطاء
     const cleanId = publisherId.trim();
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${cleanId}`;
     script.crossOrigin = "anonymous";
