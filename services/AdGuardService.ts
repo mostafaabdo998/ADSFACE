@@ -14,11 +14,13 @@ class AdGuardService {
   private isAdSenseInjected: boolean = false;
   private isBot: boolean = false;
   private listeners: Set<SafetyCallback> = new Set();
+  private checkInterval: any = null;
 
   private constructor() {
     if (typeof window !== 'undefined') {
       this.detectSource();
       this.initListeners();
+      this.startSafetyEngine();
     }
   }
 
@@ -29,12 +31,41 @@ class AdGuardService {
 
   public subscribeToSafety(callback: SafetyCallback) {
     this.listeners.add(callback);
+    // إرسال الحالة الحالية فوراً للمشترك الجديد
     callback(this.isVerified || this.isBot);
-    return () => this.listeners.delete(callback);
+    return () => { this.listeners.delete(callback); };
   }
 
   private notifyListeners() {
     this.listeners.forEach(cb => cb(true));
+  }
+
+  private async startSafetyEngine() {
+    const settings = await this.getSettings();
+    if (!settings) return;
+
+    if (this.checkInterval) clearInterval(this.checkInterval);
+    
+    this.checkInterval = setInterval(() => {
+      this.runInternalCheck(settings);
+    }, 1000);
+  }
+
+  private runInternalCheck(settings: SiteSettings) {
+    if (this.isVerified || this.isBot) {
+      if (this.checkInterval) clearInterval(this.checkInterval);
+      return;
+    }
+
+    const elapsed = (Date.now() - this.startTime) / 1000;
+    const required = this.visitorSource === VisitorSource.FACEBOOK ? (settings.fbStayDuration || 12) : (settings.otherStayDuration || 3);
+    const scrollDepth = this.maxScroll * 100;
+
+    if (elapsed >= required && scrollDepth >= (settings.minScrollDepth || 20) && this.hasInteracted) {
+      this.isVerified = true;
+      if (settings.adClient) this.injectAdSense(settings.adClient);
+      this.notifyListeners();
+    }
   }
 
   public async getSettings(): Promise<SiteSettings | null> {
@@ -55,6 +86,7 @@ class AdGuardService {
 
   public async saveSettings(settings: SiteSettings) {
     await supabase.from('settings').update(settings).eq('id', 1);
+    this.startSafetyEngine(); // إعادة تشغيل المحرك بالإعدادات الجديدة
   }
 
   public async saveArticle(article: NewsItem) {
@@ -84,8 +116,8 @@ class AdGuardService {
 
   private detectSource() {
     const ua = (navigator.userAgent || '').toLowerCase();
-    // قائمة محدثة لزواحف البحث لضمان عدم حجب الإعلانات عنها أبداً
-    this.isBot = /googlebot|adsbot|mediapartners|bingbot|slurp|duckduckbot|baiduspider|yandexbot|facebookexternalhit/i.test(ua);
+    // كشف الزواحف بدقة (جوجل، فيسبوك، بينج)
+    this.isBot = /googlebot|adsbot|mediapartners|bingbot|slurp|duckduckbot|baiduspider|yandexbot|facebookexternalhit|lighthouse|gtmetrix/i.test(ua);
 
     const isFB = ua.includes('fb') || (document.referrer || '').includes('facebook.com');
     this.visitorSource = isFB ? VisitorSource.FACEBOOK : VisitorSource.OTHER;
@@ -107,29 +139,12 @@ class AdGuardService {
     ['mousemove', 'touchstart', 'scroll', 'keydown'].forEach(ev => window.addEventListener(ev, interactionHandler));
   }
 
-  public async runSafetyCheck(settings: SiteSettings) {
-    if (this.isBot || this.isVerified) return;
-
-    const elapsed = (Date.now() - this.startTime) / 1000;
-    const required = this.visitorSource === VisitorSource.FACEBOOK ? (settings.fbStayDuration || 12) : (settings.otherStayDuration || 3);
-    const scrollDepth = this.maxScroll * 100;
-
-    if (elapsed >= required && scrollDepth >= (settings.minScrollDepth || 20) && this.hasInteracted) {
-      this.isVerified = true;
-      this.notifyListeners();
-      const stats = await this.getStats();
-      if (stats) await supabase.from('stats').update({ safeClicksGenerated: (stats.safeClicksGenerated || 0) + 1 }).eq('id', 1);
-    }
-  }
-
   public injectAdSense(publisherId: string) {
     if (typeof window === 'undefined' || this.isAdSenseInjected || !publisherId) return;
-
     const script = document.createElement('script');
     script.async = true;
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${publisherId.trim()}`;
     script.crossOrigin = "anonymous";
-    script.onerror = () => { this.isAdSenseInjected = false; };
     document.head.appendChild(script);
     this.isAdSenseInjected = true;
   }
