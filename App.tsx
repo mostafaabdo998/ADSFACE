@@ -1,177 +1,127 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { NewsItem, SiteSettings } from './types';
+import { adGuard } from './services/AdGuardService';
 import { NewsCard } from './components/NewsCard';
-import { AdSlot } from './components/AdSlot';
 import { ArticlePage } from './components/ArticlePage';
 import { Dashboard } from './components/Dashboard';
-import { adGuard } from './services/AdGuardService';
-
-const LoginPage: React.FC<{ onLogin: (user: string, pass: string) => void, error: string, onBack: () => void, siteName: string }> = ({ onLogin, error, onBack, siteName }) => {
-  const [u, setU] = useState('');
-  const [p, setP] = useState('');
-  return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4" dir="rtl">
-      <div className="bg-white p-10 rounded-[40px] shadow-2xl max-w-md w-full border border-gray-100 animate-in zoom-in duration-300">
-        <div className="text-center mb-10">
-          <div className="w-16 h-16 bg-blue-600 rounded-2xl flex items-center justify-center text-white text-3xl mx-auto mb-4">🔒</div>
-          <h2 className="text-xl font-black text-gray-900">إدارة {siteName}</h2>
-        </div>
-        <div className="space-y-4">
-          <input type="text" placeholder="اسم المستخدم" value={u} onChange={e => setU(e.target.value)} className="w-full bg-gray-50 border-none px-6 py-4 rounded-xl font-bold outline-none text-right" />
-          <input type="password" placeholder="كلمة المرور" value={p} onChange={e => setP(e.target.value)} className="w-full bg-gray-50 border-none px-6 py-4 rounded-xl font-bold outline-none text-right" />
-          {error && <p className="text-red-500 text-[10px] font-black text-center">{error}</p>}
-          <button onClick={() => onLogin(u, p)} className="w-full bg-blue-600 text-white py-4 rounded-xl font-black shadow-lg hover:bg-blue-700 transition-colors">دخول النظام</button>
-          <button onClick={onBack} className="w-full text-gray-400 text-[10px] font-black uppercase tracking-widest mt-4 hover:text-gray-600 text-center">العودة للموقع</button>
-        </div>
-      </div>
-    </div>
-  );
-};
+import { AdSlot } from './components/AdSlot';
 
 const App: React.FC = () => {
-  const [path, setPath] = useState(window.location.pathname);
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const [view, setView] = useState<'home' | 'article' | 'dashboard'>('home');
+  const [selectedArticle, setSelectedArticle] = useState<NewsItem | null>(null);
   const [articles, setArticles] = useState<NewsItem[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [loginError, setLoginError] = useState('');
-
-  const navigate = useCallback((to: string) => {
-    if (window.location.pathname === to) return;
-    window.history.pushState({}, '', to);
-    setPath(to);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  }, []);
+  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const handlePopState = () => setPath(window.location.pathname);
-    window.addEventListener('popstate', handlePopState);
-    loadData();
-    return () => window.removeEventListener('popstate', handlePopState);
+    initApp();
+    adGuard.trackVisit();
   }, []);
 
-  const loadData = async () => {
-    try {
-      setIsLoading(true);
-      const [s, a] = await Promise.all([adGuard.getSettings(), adGuard.getArticles()]);
-      setSettings(s);
-      setArticles(a || []);
-      if (s) {
-        document.title = s.siteName;
-        adGuard.trackVisit().catch(() => {});
-      }
-    } catch (e) {
-      console.error("Initialization Error", e);
-    } finally {
-      setIsLoading(false);
-    }
+  const initApp = async () => {
+    setLoading(true);
+    const [arts, s] = await Promise.all([adGuard.getArticles(), adGuard.getSettings()]);
+    setArticles(arts);
+    setSettings(s);
+    setLoading(false);
   };
 
-  const renderContent = () => {
-    if (isLoading) return <div className="max-w-6xl mx-auto px-4 mt-20 text-center font-black animate-pulse">جاري التحميل...</div>;
+  const openArticle = (item: NewsItem) => {
+    setSelectedArticle(item);
+    setView('article');
+  };
 
-    if (!settings) return <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-      <h2 className="text-xl font-black mb-4">فشل في تحميل الإعدادات</h2>
-      <button onClick={() => window.location.reload()} className="bg-blue-600 text-white px-8 py-3 rounded-xl font-black">تحديث</button>
-    </div>;
-
-    if (path === '/dashboard' || path === '/login') {
-      return isLoggedIn ? <Dashboard onBack={() => navigate('/')} /> : <LoginPage onLogin={(u, p) => {
-        if(u === settings.adminUsername && p === settings.adminPassword) { setIsLoggedIn(true); navigate('/dashboard'); } else setLoginError('بيانات خاطئة');
-      }} error={loginError} onBack={() => navigate('/')} siteName={settings.siteName} />;
-    }
-
-    if (path.startsWith('/article/')) {
-      const id = path.split('/')[2];
-      const article = articles.find(a => a.id === id);
-      return article ? <ArticlePage key={article.id} item={article} onBack={() => navigate('/')} /> : <div className="py-20 text-center px-4"><h2 className="text-xl font-black">عذراً، المحتوى غير موجود</h2><button onClick={() => navigate('/')} className="mt-4 text-blue-600 font-bold underline">العودة للرئيسية</button></div>;
-    }
-
+  if (loading) {
     return (
-      <main className="max-w-6xl mx-auto px-4 mt-8 md:mt-12 animate-in fade-in duration-1000" dir="rtl">
-        {/* إعلان الهيدر */}
-        <AdSlot placementId="pos_top" currentPath={path} />
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 md:gap-12 mt-6">
-          <div className="lg:col-span-2 space-y-8 md:space-y-12">
-            {articles.length > 0 && (
-              <div className="relative group overflow-hidden rounded-3xl md:rounded-[45px] shadow-2xl cursor-pointer" onClick={() => navigate(`/article/${articles[0].id}`)}>
-                <img src={articles[0].image} className="w-full h-64 md:h-[550px] object-cover transition-transform duration-1000 group-hover:scale-105" alt="" />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/30 to-transparent flex flex-col justify-end p-6 md:p-12 text-right">
-                  <span className="bg-blue-600 text-white text-[9px] md:text-[10px] font-black px-4 py-1.5 rounded-full w-fit mb-4 uppercase tracking-widest">{articles[0].category}</span>
-                  <h2 className="text-xl md:text-4xl font-black text-white mb-4 leading-tight">{articles[0].title}</h2>
-                  <p className="text-gray-300 text-xs md:text-sm opacity-80 leading-relaxed line-clamp-2 hidden sm:block">{articles[0].excerpt}</p>
-                </div>
-              </div>
-            )}
-            
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-10">
-              {articles.slice(1, 7).map(item => (
-                <div key={item.id} onClick={() => navigate(`/article/${item.id}`)} className="cursor-pointer">
-                  <NewsCard item={item} />
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <aside className="space-y-8 md:space-y-12">
-            <div className="bg-white p-8 md:p-10 rounded-3xl md:rounded-[40px] shadow-sm border border-gray-100 text-right">
-              <h4 className="font-black border-r-4 border-blue-600 pr-4 mb-8 text-lg md:text-xl text-gray-900">أخبار تهمك</h4>
-              <ul className="space-y-6 md:space-y-8">
-                {articles.slice(0, 5).map((art, i) => (
-                  <li key={art.id} onClick={() => navigate(`/article/${art.id}`)} className="flex gap-4 md:gap-6 group cursor-pointer items-start justify-end">
-                    <p className="text-xs md:text-sm font-bold group-hover:text-blue-600 line-clamp-2 leading-relaxed transition-colors order-1">{art.title}</p>
-                    <span className="text-2xl md:text-3xl font-black text-gray-100 group-hover:text-blue-200 transition-colors order-2">0{i+1}</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            {/* إعلان الشريط الجانبي */}
-            <AdSlot placementId="pos_sidebar_main" currentPath={path} />
-          </aside>
-        </div>
-      </main>
+      <div className="min-h-screen bg-white flex items-center justify-center">
+        <div className="w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+      </div>
     );
-  };
-
-  const isDashboardView = path === '/dashboard' || path === '/login';
+  }
 
   return (
-    <div className="min-h-screen bg-[#fcfcfd]" dir="rtl">
-      {!isDashboardView && (
-        <header className="bg-white/95 backdrop-blur-xl border-b border-gray-100 sticky top-0 z-50">
-          <div className="max-w-6xl mx-auto px-4 h-16 md:h-20 flex items-center justify-between">
-            <div className="flex items-center gap-2 md:gap-3 cursor-pointer group" onClick={() => navigate('/')}>
-              <div className="bg-blue-600 text-white w-9 h-9 md:w-11 md:h-11 flex items-center justify-center rounded-xl md:rounded-2xl font-black text-lg md:text-xl shadow-lg transition-transform group-hover:scale-105">{(settings?.siteName || 'أ').charAt(0)}</div>
-              <h1 className="text-sm md:text-xl font-black text-gray-900 uppercase tracking-tighter">{settings?.siteName || 'الأخبار'}</h1>
+    <div className="min-h-screen bg-gray-50/50" dir="rtl">
+      {/* Header */}
+      <header className="bg-white border-b border-gray-100 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto px-4 h-16 md:h-20 flex items-center justify-between">
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => setView('home')}>
+            <div className="w-8 h-8 md:w-10 md:h-10 bg-blue-600 rounded-xl flex items-center justify-center text-white text-xl md:text-2xl font-black shadow-lg shadow-blue-200">
+              N
             </div>
-            
-            <nav className="hidden lg:flex gap-10 text-[11px] font-black uppercase text-gray-400">
-              <button onClick={() => navigate('/')} className={`transition-colors hover:text-blue-600 ${path === '/' ? 'text-blue-600' : ''}`}>الرئيسية</button>
-              {settings?.categories?.slice(0, 5).map(cat => (
-                <a key={cat} href="#" onClick={e => e.preventDefault()} className="hover:text-gray-900 transition-colors">{cat}</a>
-              ))}
-            </nav>
-
-            <button onClick={() => isLoggedIn ? navigate('/dashboard') : navigate('/login')} className="w-9 h-9 md:w-10 md:h-10 flex items-center justify-center text-gray-300 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition-all">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" /></svg>
-            </button>
+            <h1 className="text-xl md:text-2xl font-black text-gray-900 tracking-tight">
+              {settings?.siteName || 'أخباري'}
+            </h1>
           </div>
-        </header>
-      )}
 
-      <div className="pb-12">
-        {renderContent()}
-      </div>
+          <nav className="hidden md:flex items-center gap-8">
+            {settings?.categories?.map(cat => (
+              <button key={cat} className="text-[10px] font-black uppercase text-gray-400 hover:text-blue-600 transition-colors tracking-widest">
+                {cat}
+              </button>
+            ))}
+          </nav>
 
-      {!isDashboardView && (
-        <footer className="py-12 md:py-16 border-t border-gray-50 bg-white">
-          <div className="max-w-6xl mx-auto px-4 text-center">
-            <p className="text-gray-300 text-[10px] font-black uppercase tracking-[0.4em]">© {new Date().getFullYear()} جميع الحقوق محفوظة لشبكة {settings?.siteName || 'الإخبارية'}</p>
+          <button 
+            onClick={() => setView('dashboard')}
+            className="w-8 h-8 md:w-10 md:h-10 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-gray-400 hover:bg-blue-50 hover:text-blue-600 transition-all shadow-sm"
+          >
+            ⚙️
+          </button>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main>
+        {view === 'home' && (
+          <div className="max-w-7xl mx-auto px-4 py-8 md:py-12">
+            {/* Top Ad */}
+            <AdSlot placementId="pos_top" />
+
+            {/* Featured Post / Hero Section */}
+            <div className="mb-12 md:mb-16">
+               <h2 className="text-[10px] font-black text-blue-600 uppercase tracking-[0.3em] mb-4 md:mb-6 flex items-center gap-2">
+                 <span className="w-8 h-[2px] bg-blue-600"></span> آخر الأخبار
+               </h2>
+               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+                 {articles.map(art => (
+                   <div key={art.id} onClick={() => openArticle(art)} className="cursor-pointer">
+                     <NewsCard item={art} />
+                   </div>
+                 ))}
+               </div>
+            </div>
+
+            <AdSlot placementId="pos_bottom" />
           </div>
-        </footer>
-      )}
+        )}
+
+        {view === 'article' && selectedArticle && (
+          <ArticlePage item={selectedArticle} onBack={() => setView('home')} />
+        )}
+
+        {view === 'dashboard' && (
+          <Dashboard onBack={() => setView('home')} />
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-gray-100 py-12 md:py-20">
+        <div className="max-w-7xl mx-auto px-4 text-center">
+          <div className="inline-flex items-center gap-2 mb-8">
+            <div className="w-10 h-10 bg-gray-900 rounded-2xl flex items-center justify-center text-white text-2xl font-black">
+              N
+            </div>
+            <h2 className="text-2xl font-black text-gray-900">{settings?.siteName}</h2>
+          </div>
+          <p className="max-w-md mx-auto text-gray-400 text-xs md:text-sm font-medium leading-relaxed mb-10">
+            شبكة إخبارية مستقلة تقدم لكم آخر الأخبار والتحليلات بمصداقية وشفافية على مدار الساعة.
+          </p>
+          <div className="text-[10px] font-black text-gray-300 uppercase tracking-[0.4em]">
+            &copy; {new Date().getFullYear()} {settings?.siteName} - All Rights Reserved
+          </div>
+        </div>
+      </footer>
     </div>
   );
 };

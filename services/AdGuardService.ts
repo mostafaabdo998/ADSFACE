@@ -1,5 +1,5 @@
 
-import { VisitorSource, SiteSettings, NewsItem, ShieldStats } from '../types';
+import { SiteSettings, NewsItem, ShieldStats } from '../types';
 import { supabase } from '../lib/supabase';
 
 type SafetyCallback = (isSafe: boolean) => void;
@@ -8,18 +8,13 @@ class AdGuardService {
   private static instance: AdGuardService;
   private isVerified: boolean = false;
   private startTime: number = Date.now();
-  private hasInteracted: boolean = false;
-  private maxScroll: number = 0;
-  private visitorSource: VisitorSource = VisitorSource.OTHER;
-  private isAdSenseInjected: boolean = false;
-  private isBot: boolean = false;
   private listeners: Set<SafetyCallback> = new Set();
   private cachedSettings: SiteSettings | null = null;
+  private checkInterval: any = null;
 
   private constructor() {
     if (typeof window !== 'undefined') {
-      this.detectSource();
-      this.initEventListeners();
+      this.initTimer();
       this.loadAndInit();
     }
   }
@@ -34,11 +29,6 @@ class AdGuardService {
     if (settings?.adClient) {
       this.injectAdSenseGlobal(settings.adClient);
     }
-    // إذا كان بوت زاحف (SEO Bot)، نفعله فوراً
-    if (this.isBot) {
-      this.isVerified = true;
-      this.notifyListeners();
-    }
   }
 
   public subscribeToSafety(callback: SafetyCallback) {
@@ -51,41 +41,28 @@ class AdGuardService {
     this.listeners.forEach(cb => cb(this.isVerified));
   }
 
-  private initEventListeners() {
-    const checkAction = () => {
-      if (this.isVerified) return;
+  private initTimer() {
+    // التحقق كل ثانية من مرور الوقت المطلوب
+    this.checkInterval = setInterval(() => {
       this.checkSafety();
-    };
-
-    window.addEventListener('scroll', () => {
-      const winScroll = window.scrollY;
-      const height = document.documentElement.scrollHeight - document.documentElement.clientHeight;
-      const scrolled = height > 0 ? (winScroll / height) : 0;
-      if (scrolled > this.maxScroll) this.maxScroll = scrolled;
-      checkAction();
-    }, { passive: true });
-
-    ['mousedown', 'touchstart', 'keydown'].forEach(ev => {
-      window.addEventListener(ev, () => {
-        this.hasInteracted = true;
-        checkAction();
-      }, { once: true });
-    });
+    }, 1000);
   }
 
   private async checkSafety() {
-    if (this.isVerified) return;
+    if (this.isVerified) {
+      if (this.checkInterval) clearInterval(this.checkInterval);
+      return;
+    }
     
     const settings = this.cachedSettings || await this.getSettings();
-    if (!settings) return;
-
+    const delay = settings?.globalAdDelay ?? 5; // الافتراضي 5 ثواني
+    
     const elapsed = (Date.now() - this.startTime) / 1000;
-    const required = this.visitorSource === VisitorSource.FACEBOOK ? (settings.fbStayDuration || 12) : (settings.otherStayDuration || 3);
-    const scrollDepth = this.maxScroll * 100;
 
-    if (elapsed >= required && scrollDepth >= (settings.minScrollDepth || 20) && this.hasInteracted) {
+    if (elapsed >= delay) {
       this.isVerified = true;
       this.notifyListeners();
+      if (this.checkInterval) clearInterval(this.checkInterval);
     }
   }
 
@@ -93,7 +70,15 @@ class AdGuardService {
     if (this.cachedSettings) return this.cachedSettings;
     try {
       const { data, error } = await supabase.from('settings').select('*').eq('id', 1).single();
-      if (error) throw error;
+      if (error) {
+        return {
+          siteName: 'أخبار اليوم',
+          adClient: 'ca-pub-3940256099942544',
+          categories: ['سياسة', 'اقتصاد', 'رياضة', 'تكنولوجيا'],
+          globalAdDelay: 5,
+          customAdPlacements: []
+        };
+      }
       this.cachedSettings = data as SiteSettings;
       return this.cachedSettings;
     } catch (e) { return null; }
@@ -104,7 +89,19 @@ class AdGuardService {
       const { data, error } = await supabase.from('articles').select('*').order('created_at', { ascending: false });
       if (error) throw error;
       return (data || []) as NewsItem[];
-    } catch (e) { return []; }
+    } catch (e) {
+      return [
+        {
+          id: '1',
+          title: 'تحديثات الموقع الجديدة',
+          excerpt: 'تم تحديث نظام الإعلانات ليكون أكثر بساطة وسرعة لجميع الزوار...',
+          content: '<p>تم إلغاء كافة أنظمة الحماية المعقدة واستبدالها بنظام تأخير بسيط يضمن سلامة الحساب وسلاسة التصفح.</p>',
+          category: 'تكنولوجيا',
+          image: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?q=80&w=800',
+          date: 'اليوم'
+        }
+      ];
+    }
   }
 
   public async saveSettings(settings: SiteSettings) {
@@ -123,33 +120,21 @@ class AdGuardService {
 
   public async getStats(): Promise<ShieldStats | null> {
     const { data } = await supabase.from('stats').select('*').eq('id', 1).single();
-    return data as ShieldStats;
+    return data || { totalProtectedVisits: 0, fbVisits: 0, safeClicksGenerated: 0, blockedBots: 0, revenueProtected: 0 };
   }
 
   public async trackVisit() {
     try {
-      const stats = await this.getStats();
+      const { data: stats } = await supabase.from('stats').select('*').eq('id', 1).single();
       if (!stats) return;
-      const isFB = this.visitorSource !== VisitorSource.OTHER;
       await supabase.from('stats').update({
-        totalProtectedVisits: (stats.totalProtectedVisits || 0) + 1,
-        fbVisits: isFB ? (stats.fbVisits || 0) + 1 : (stats.fbVisits || 0)
+        totalProtectedVisits: (stats.totalProtectedVisits || 0) + 1
       }).eq('id', 1);
     } catch (e) {}
   }
 
-  private detectSource() {
-    const ua = (navigator.userAgent || '').toLowerCase();
-    // بوتات الأرشفة فقط هي من تتجاوز الفحص لضمان الـ SEO
-    // بوتات مراجعة أدسنس (adsbot/mediapartners) يجب أن تعامل كمستخدم عادي لمنع كشف الـ Cloaking
-    this.isBot = /googlebot|bingbot|slurp|duckduckbot|baiduspider|yandexbot/i.test(ua);
-
-    const isFB = ua.includes('fb') || (document.referrer || '').includes('facebook.com');
-    this.visitorSource = isFB ? VisitorSource.FACEBOOK : VisitorSource.OTHER;
-  }
-
-  public injectAdSenseGlobal(publisherId: string) {
-    if (typeof window === 'undefined' || this.isAdSenseInjected || !publisherId) return;
+  private injectAdSenseGlobal(publisherId: string) {
+    if (typeof window === 'undefined' || !publisherId) return;
     const scriptId = 'adsense-global-init';
     if (document.getElementById(scriptId)) return;
 
@@ -159,7 +144,6 @@ class AdGuardService {
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${publisherId.trim()}`;
     script.crossOrigin = "anonymous";
     document.head.appendChild(script);
-    this.isAdSenseInjected = true;
   }
 }
 
