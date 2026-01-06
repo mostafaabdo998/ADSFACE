@@ -2,19 +2,12 @@
 import { SiteSettings, NewsItem, ShieldStats } from '../types';
 import { supabase } from '../lib/supabase';
 
-type SafetyCallback = (isSafe: boolean) => void;
-
 class AdGuardService {
   private static instance: AdGuardService;
-  private isVerified: boolean = false;
-  private startTime: number = Date.now();
-  private listeners: Set<SafetyCallback> = new Set();
   private cachedSettings: SiteSettings | null = null;
-  private checkInterval: any = null;
 
   private constructor() {
     if (typeof window !== 'undefined') {
-      this.initTimer();
       this.loadAndInit();
     }
   }
@@ -31,41 +24,6 @@ class AdGuardService {
     }
   }
 
-  public subscribeToSafety(callback: SafetyCallback) {
-    this.listeners.add(callback);
-    callback(this.isVerified);
-    return () => { this.listeners.delete(callback); };
-  }
-
-  private notifyListeners() {
-    this.listeners.forEach(cb => cb(this.isVerified));
-  }
-
-  private initTimer() {
-    // التحقق كل ثانية من مرور الوقت المطلوب
-    this.checkInterval = setInterval(() => {
-      this.checkSafety();
-    }, 1000);
-  }
-
-  private async checkSafety() {
-    if (this.isVerified) {
-      if (this.checkInterval) clearInterval(this.checkInterval);
-      return;
-    }
-    
-    const settings = this.cachedSettings || await this.getSettings();
-    const delay = settings?.globalAdDelay ?? 5; // الافتراضي 5 ثواني
-    
-    const elapsed = (Date.now() - this.startTime) / 1000;
-
-    if (elapsed >= delay) {
-      this.isVerified = true;
-      this.notifyListeners();
-      if (this.checkInterval) clearInterval(this.checkInterval);
-    }
-  }
-
   public async getSettings(): Promise<SiteSettings | null> {
     if (this.cachedSettings) return this.cachedSettings;
     try {
@@ -75,7 +33,6 @@ class AdGuardService {
           siteName: 'أخبار اليوم',
           adClient: 'ca-pub-3940256099942544',
           categories: ['سياسة', 'اقتصاد', 'رياضة', 'تكنولوجيا'],
-          globalAdDelay: 5,
           customAdPlacements: []
         };
       }
@@ -94,8 +51,8 @@ class AdGuardService {
         {
           id: '1',
           title: 'تحديثات الموقع الجديدة',
-          excerpt: 'تم تحديث نظام الإعلانات ليكون أكثر بساطة وسرعة لجميع الزوار...',
-          content: '<p>تم إلغاء كافة أنظمة الحماية المعقدة واستبدالها بنظام تأخير بسيط يضمن سلامة الحساب وسلاسة التصفح.</p>',
+          excerpt: 'تم اعتماد نظام الإعلانات القياسي لضمان التوافق التام مع السياسات...',
+          content: '<p>تم تحديث الموقع ليعمل وفق أفضل ممارسات النشر الإخباري الرقمي، مع ضمان استقرار الإعلانات وسرعة التحميل لجميع الزوار.</p>',
           category: 'تكنولوجيا',
           image: 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?q=80&w=800',
           date: 'اليوم'

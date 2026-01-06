@@ -4,15 +4,13 @@ import { SiteSettings, NewsItem, ShieldStats, AdPlacement } from '../types';
 import { adGuard } from '../services/AdGuardService';
 
 export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
-  const [activeTab, setActiveTab] = useState<'analytics' | 'articles' | 'ads' | 'shield' | 'general'>('analytics');
+  const [activeTab, setActiveTab] = useState<'analytics' | 'articles' | 'ads' | 'general'>('analytics');
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [articles, setArticles] = useState<NewsItem[]>([]);
   const [stats, setStats] = useState<ShieldStats | null>(null);
   const [editingArticle, setEditingArticle] = useState<Partial<NewsItem> | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
-  const [newCategory, setNewCategory] = useState('');
 
   useEffect(() => {
     loadAllData();
@@ -31,10 +29,8 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         { id: 'pos_bottom', name: 'إعلان أسفل المقال', code: '', isActive: true }
       ];
 
-      if (s) {
-        if (!s.customAdPlacements || s.customAdPlacements.length === 0) {
-          s.customAdPlacements = defaultPlacements;
-        }
+      if (s && (!s.customAdPlacements || s.customAdPlacements.length === 0)) {
+        s.customAdPlacements = defaultPlacements;
       }
 
       setSettings(s);
@@ -104,7 +100,7 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         <div className="flex flex-col md:flex-row justify-between items-center gap-6 mb-10 bg-white p-6 md:p-8 rounded-[30px] shadow-sm border border-gray-100">
           <div className="text-center md:text-right">
             <h1 className="text-xl md:text-2xl font-black text-gray-900">إدارة {settings.siteName}</h1>
-            <p className="text-[10px] font-black text-blue-600 uppercase mt-1">تنسيق الإعلانات البسيط</p>
+            <p className="text-[10px] font-black text-blue-600 uppercase mt-1">تنسيق الإعلانات القياسي</p>
           </div>
           <div className="flex gap-3">
              <button onClick={onBack} className="px-8 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black shadow-lg">معاينة الموقع</button>
@@ -118,7 +114,6 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
             { id: 'analytics', label: 'الإحصائيات', icon: '📊' },
             { id: 'articles', label: 'المقالات', icon: '✍️' },
             { id: 'ads', label: 'الإعلانات', icon: '💰' },
-            { id: 'shield', label: 'التأخير الزمني', icon: '⏳' },
             { id: 'general', label: 'الإعدادات', icon: '⚙️' },
           ].map(tab => (
             <button 
@@ -140,7 +135,7 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
            </div>
            <div className="bg-white p-8 rounded-[35px] border border-gray-100 shadow-sm">
               <p className="text-[10px] font-black text-gray-400 uppercase">حالة الإعلانات</p>
-              <p className="text-3xl font-black mt-1 text-green-600">تعمل بتأخير</p>
+              <p className="text-3xl font-black mt-1 text-green-600">نشطة (نظام قياسي)</p>
            </div>
         </div>
       )}
@@ -178,23 +173,6 @@ export const Dashboard: React.FC<{ onBack: () => void }> = ({ onBack }) => {
                <input type="text" value={settings.adClient || ''} onChange={e => setSettings({...settings, adClient: e.target.value})} className="w-full bg-white p-4 rounded-xl font-bold border-none outline-none text-center" dir="ltr" />
             </div>
             <button onClick={() => handleSaveSettings()} className="w-full bg-blue-600 text-white py-5 rounded-2xl font-black text-sm shadow-xl hover:bg-blue-700 transition-all">حفظ وتحديث الإعلانات</button>
-        </div>
-      )}
-
-      {activeTab === 'shield' && !editingArticle && (
-        <div className="bg-white p-6 md:p-10 rounded-[40px] border border-gray-100 shadow-sm animate-in fade-in duration-500 text-right">
-           <h3 className="text-xl font-black mb-4 border-r-4 border-blue-600 pr-4">إعدادات تأخير الإعلانات</h3>
-           <p className="text-xs text-gray-400 mb-8 px-5">سيتم تطبيق هذا التأخير على كافة الزوار بمجرد فتح الصفحة.</p>
-           <div className="max-w-md">
-              <label className="text-[10px] font-black uppercase text-gray-400 block mb-2">عدد ثواني التأخير (الافتراضي 5)</label>
-              <input 
-                type="number" 
-                value={settings.globalAdDelay} 
-                onChange={e => setSettings({...settings, globalAdDelay: parseInt(e.target.value) || 0})} 
-                className="w-full bg-gray-50 p-5 rounded-2xl font-black text-right border border-gray-100 focus:bg-white transition-all outline-none" 
-              />
-           </div>
-           <button onClick={() => handleSaveSettings()} className="mt-8 bg-blue-600 text-white px-12 py-4 rounded-2xl font-black text-sm shadow-xl">حفظ إعدادات التأخير</button>
         </div>
       )}
 

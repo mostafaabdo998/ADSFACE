@@ -22,7 +22,6 @@ export interface SiteSettings {
   adClient: string;
   categories: string[];
   customAdPlacements: AdPlacement[];
-  globalAdDelay: number; // تأخير ظهور الإعلانات للجميع بالثواني
 }
 
 export interface ShieldStats {
