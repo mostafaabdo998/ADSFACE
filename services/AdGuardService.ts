@@ -64,6 +64,7 @@ class AdGuardService {
   public async saveSettings(settings: SiteSettings) {
     this.cachedSettings = settings;
     await supabase.from('settings').update(settings).eq('id', 1);
+    // تنبيه: تغيير الـ adClient يتطلب تحديث الصفحة (Refresh) لتجنب التدوير البرمجي المحظور
     if (settings.adClient) this.injectAdSenseGlobal(settings.adClient);
   }
 
@@ -90,17 +91,35 @@ class AdGuardService {
     } catch (e) {}
   }
 
+  /**
+   * يحقن سكريبت أدسنس الرئيسي في الـ Head مرة واحدة فقط لكل جلسة.
+   * يستخدم flag لمنع الحقن المتكرر (Script Injection Duplication).
+   */
   private injectAdSenseGlobal(publisherId: string) {
     if (typeof window === 'undefined' || !publisherId) return;
+
+    // 1. منع الحقن المتكرر لنفس الحساب أو حسابات مختلفة في نفس الجلسة
+    if ((window as any).__adsenseInjected) {
+      console.log('AdSense script already present. Skipping injection to avoid violations.');
+      return;
+    }
+
     const scriptId = 'adsense-global-init';
     if (document.getElementById(scriptId)) return;
+
+    // 2. وضع العلامة قبل البدء لضمان عدم حدوث Race Condition
+    (window as any).__adsenseInjected = true;
 
     const script = document.createElement('script');
     script.id = scriptId;
     script.async = true;
     script.src = `https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${publisherId.trim()}`;
     script.crossOrigin = "anonymous";
+    
+    // الحقن المبكر والمباشر في الـ head
     document.head.appendChild(script);
+    
+    console.log('AdSense Global Script Injected Successfully.');
   }
 }
 

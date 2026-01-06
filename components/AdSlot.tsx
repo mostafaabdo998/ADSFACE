@@ -20,7 +20,7 @@ const PLACEMENT_CONFIGS: Record<string, { minHeight: string }> = {
 export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const isPushed = useRef(false);
+  const pushAttempted = useRef(false);
   
   const config = PLACEMENT_CONFIGS[placementId] || { minHeight: '100px' };
 
@@ -29,6 +29,8 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
   }, []);
 
   useEffect(() => {
+    pushAttempted.current = false;
+
     if (!settings || !containerRef.current) return;
     
     const placement = settings.customAdPlacements?.find(p => p.id === placementId);
@@ -47,7 +49,6 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
     const adSlot = slotMatch ? slotMatch[1] : '';
     const adFormat = formatMatch ? formatMatch[1] : 'auto';
 
-    // مسح الحاوية قبل الحقن الجديد (مهم عند الانتقال بين المقالات)
     containerRef.current.innerHTML = '';
 
     if (!adSlot) {
@@ -55,10 +56,11 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
       return;
     }
 
-    // حقن وسم INS
+    // بناء وسم INS مع ضمان العرض 100%
     const ins = document.createElement('ins');
     ins.className = 'adsbygoogle';
     ins.style.display = 'block';
+    ins.style.width = '100%'; // تأكيد العرض الكامل
     ins.style.minHeight = config.minHeight;
     ins.style.background = 'transparent';
     ins.setAttribute('data-ad-client', adClient);
@@ -68,25 +70,45 @@ export const AdSlot: React.FC<AdSlotProps> = ({ placementId, currentPath }) => {
 
     containerRef.current.appendChild(ins);
     
-    // طلب الإعلان فوراً وبدون أي شرط (Unconditional Ad Request)
-    try {
-      (window as any).adsbygoogle = (window as any).adsbygoogle || [];
-      (window as any).adsbygoogle.push({});
-      isPushed.current = true;
-    } catch (e) {
-      console.error(`AdSense Push Error [${placementId}]:`, e);
-    }
+    // وظيفة تنفيذ الـ push بعد التأكد من جاهزية العرض
+    const tryPush = () => {
+      if (pushAttempted.current) return;
+
+      // التأكد من أن الحاوية لها عرض أكبر من 0 لتجنب خطأ TagError
+      if (containerRef.current && containerRef.current.offsetWidth > 0) {
+        try {
+          (window as any).adsbygoogle = (window as any).adsbygoogle || [];
+          (window as any).adsbygoogle.push({});
+          pushAttempted.current = true;
+          console.log(`AdSense Success [${placementId}]: Width is ${containerRef.current.offsetWidth}`);
+        } catch (e) {
+          console.error(`AdSense Push Error [${placementId}]:`, e);
+        }
+      } else {
+        // إذا كان العرض لا يزال 0، ننتظر الإطار التالي (Next Frame)
+        requestAnimationFrame(tryPush);
+      }
+    };
+
+    // نستخدم requestAnimationFrame لمنح المتصفح فرصة لحساب أبعاد الصفحة (Layout/Reflow)
+    requestAnimationFrame(tryPush);
+
+    return () => {
+      if (containerRef.current) containerRef.current.innerHTML = '';
+      pushAttempted.current = true; // منع أي محاولات متأخرة بعد مسح العنصر
+    };
 
   }, [settings, placementId, currentPath]);
 
   return (
     <div 
       className="ads-container-fixed mx-auto my-8 bg-transparent"
-      style={{ width: '100%', minHeight: config.minHeight }}
+      style={{ width: '100%', minHeight: config.minHeight, display: 'block', overflow: 'visible' }}
     >
       <div 
         ref={containerRef} 
         className="w-full flex justify-center items-center overflow-hidden"
+        style={{ width: '100%' }}
       />
     </div>
   );
